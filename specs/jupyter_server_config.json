@@ -1,0 +1,12 @@
+{
+  "ServerApp": {
+    "root_dir": "@rootDirectoryImpure@",
+    "jpserver_extensions": {
+      "jupyter_lsp": true,
+      "jupyter_resource_usage": true,
+      "jupyterlab": true,
+      "jupyterlab_code_formatter": true,
+      "nbclassic": true
+    }
+  }
+}

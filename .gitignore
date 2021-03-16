@@ -1,0 +1,10 @@
+*.ipynb
+.ipynb_checkpoints/
+__pycache__/
+.direnv
+/share/jupyter/
+nohup.out
+log_lines.html
+data/
+share/
+deleteme/
