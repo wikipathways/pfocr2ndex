@@ -1,4 +1,3 @@
-*.ipynb
 .ipynb_checkpoints/
 __pycache__/
 .direnv
@@ -8,3 +7,4 @@ log_lines.html
 data/
 share/
 deleteme/
+.virtual_documents/
