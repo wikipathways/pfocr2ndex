@@ -1,4 +1,5 @@
 with builtins;
+#1
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
@@ -51,11 +52,47 @@ let
   # 'jupyter-kernelspec list' makes everything lowercase and joins the
   # internal kernel name with this descriptor. Example for descriptor 'mypkgs':
   #   ipython_mypkgs
+  #   ir_mypkgs
   #
   # In the JupyterLab GUI, we see the language name joined to the descriptor
   # with a dash. Example for descriptor 'mypkgs':
   #   Python3 - mypkgs
+  #   R - mypkgs
   kernel_descriptor = "mypkgs";
+
+  #########################
+  # R
+  #########################
+
+  myRPackages = p: with p; [
+    pacman
+
+    tidyverse
+    # tidyverse includes the following:
+    # * ggplot2 
+    # * purrr   
+    # * tibble  
+    # * dplyr   
+    # * tidyr   
+    # * stringr 
+    # * readr   
+    # * forcats 
+
+    feather
+    knitr
+  ];
+
+  myR = [ pkgs.R ] ++ (myRPackages pkgs.rPackages);
+
+  irkernel = jupyter.kernels.iRWith {
+    # Identifier that will appear on the Jupyter interface.
+    name = kernel_descriptor;
+    # Libraries to be available to the kernel.
+    packages = myRPackages;
+    # Optional definition of `rPackages` to be used.
+    # Useful for overlaying packages.
+    rPackages = pkgs.rPackages;
+  };
 
   #########################
   # Python
@@ -121,6 +158,15 @@ let
       pandas
       pyarrow # needed for pd.read_feather()
 
+      ########
+      # rpy2
+      ########
+      rpy2
+      # tzlocal is needed to make rpy2 work
+      tzlocal
+      # TODO: is simplegeneric also needed?
+      simplegeneric
+
       ##################
       # Parse messy HTML
       ##################
@@ -181,7 +227,7 @@ let
       # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
       # Directory from which we serve notebooks
       directory = "${rootDirectoryImpure}/${shareJupyterDirectory}/lab";
-      kernels = [ iPython ];
+      kernels = [ iPython irkernel ];
 
       # Add extra packages to the JupyterWith environment
       extraPackages = p: [
@@ -207,22 +253,35 @@ let
         # TODO: should it be specified here?
         jupyterExtraPython
 
-        #############
-        # Non-Jupyter
-        #############
+        # jupyterlab-lsp must be specified here in order for the LSP for R to work.
+        # TODO: why isn't it enough that this is specified for jupyterExtraPython?
+        jupyterExtraPython.pkgs.jupyter-lsp
+        jupyterExtraPython.pkgs.jupyterlab-lsp
+        #python3.pkgs.jupyterlab-code-formatter
 
-        p.imagemagick
-
-        # to run AutoML Vision
-        p.google-cloud-sdk
-
-        p.exiftool
-
-        # to get perceptual hash values of images
-        # p.phash
-        p.blockhash
+        p.R
       ] ++ (with pkgs.rPackages; [
+        ################################################
+        # For server extensions that rely on R or R pkgs
+        ################################################
+        # TODO: is it possible to specify these via extraJupyterPath instead?
+        #       I haven't managed to do it, but it should be possible.
+        #       I tried adding the following to extraJupyterPath, but that
+        #       didn't seem to do it.
+        #"${pkgs.R}/lib/R" 
+        #"${pkgs.R}/lib/R/library"
+        #"${pkgs.rPackages.formatR}/library"
+        #"${pkgs.rPackages.languageserver}/library"
+
         languageserver
+
+        #----------------
+        # code formatting
+        #----------------
+        formatR
+        ## an alternative formatter:
+        #styler
+        #prettycode # seems to be needed by styler
       ]);
 
       # Bring all inputs from a package in scope:
@@ -267,6 +326,24 @@ in
       ######################
       # Jupyter + JupyterLab
       ######################
+
+      #export R_HOME="${pkgs.R}/lib/R"
+      #export R_LIBS_SITE="$R_LIBS_SITE''${R_LIBS_SITE:+:}${pkgs.R}/lib/R/library:${pkgs.rPackages.languageserver}/library:${pkgs.rPackages.xml2}/library:${pkgs.rPackages.R6}/library"
+      
+      # TODO: this general format came from the nixpkgs generic R package builder.
+      # What does it do?
+      #export LD_LIBRARY_PATH="$LD_LIBRARY_PATH''${LD_LIBRARY_PATH:+:}${pkgs.R}/lib/R/lib"
+
+      # this doesn't work. it gives this message:
+      #   R cannot be found in the PATH and RHOME cannot be found.
+      export LD_LIBRARY_PATH="$LD_LIBRARY_PATH''${LD_LIBRARY_PATH:+:}$(python -m rpy2.situation LD_LIBRARY_PATH)"
+      #export LD_LIBRARY_PATH="$LD_LIBRARY_PATH''${LD_LIBRARY_PATH:+:}$(python -m rpy2.situation LD_LIBRARY_PATH)"
+      # but strangely, this gives a result
+      #direnv exec Documents/sandbox/pathway-figure-ocr/ sh -c 'python -m rpy2.situation LD_LIBRARY_PATH'
+      # and so does this:
+      #direnv exec Documents/sandbox/pathway-figure-ocr/ sh -c 'which R'
+      # and this:
+      #direnv exec Documents/sandbox/pathway-figure-ocr/ R --version
 
       export JUPYTER_DATA_DIR="${shareDirectoryImpure}"
       export JUPYTER_CONFIG_DIR="${shareDirectoryImpure}/config"
@@ -465,9 +542,11 @@ in
 
       # Just a demo of taking a source lab extension from NPM and
       # prebuilding it for Nix.
-      for d in $(ls -1 "${npmLabextensions}/labextensions"); do
-        ln -s "${npmLabextensions}/labextensions/$d" "${shareDirectoryImpure}/labextensions/$d"
-      done
+      '' +
+#      for d in $(ls -1 "${npmLabextensions}/labextensions"); do
+#        ln -s "${npmLabextensions}/labextensions/$d" "${shareDirectoryImpure}/labextensions/$d"
+#      done
+      ''
 
       ####################################
       # JupyterLab + source lab extensions
@@ -529,8 +608,8 @@ in
 #        # build process appears to fail unless I build once for jupyter lab alone
 #        # then again after adding source lab extensions.
 #
-#        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-#        jupyter lab build >&2
+        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
+        jupyter lab build >&2
 
         chmod -R +w "${shareDirectoryImpure}/lab/staging/"
         rm -rf "${shareDirectoryImpure}/lab/staging/"
