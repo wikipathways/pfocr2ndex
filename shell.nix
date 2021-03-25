@@ -2,6 +2,7 @@ with builtins;
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
+  # TODO: avoid impure directories.
 
   # this corresponds to notebook_dir (impure)
   rootDirectoryImpure = toString ./.;
