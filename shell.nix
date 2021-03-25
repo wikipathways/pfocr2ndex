@@ -1,5 +1,4 @@
 with builtins;
-#3
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
@@ -540,13 +539,12 @@ in
       # Prebuilt lab extensions from NPM
       #---------------------------------
 
-      # Just a demo of taking a source lab extension from NPM and
-      # prebuilding it for Nix.
+      # Take a source lab extension from NPM and prebuild it for Nix.
+      # It's probably better to just always use the prebuilt lab extensions
+      # PyPi, but this is a demo to show it's possible to do NPM -> Nix.
       for d in $(ls -1 "${npmLabextensions}/labextensions"); do
         ln -s "${npmLabextensions}/labextensions/$d" "${shareDirectoryImpure}/labextensions/$d"
       done
-      '' +
-      ''
 
       ####################################
       # JupyterLab + source lab extensions
