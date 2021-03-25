@@ -88,7 +88,7 @@ stdenv.mkDerivation rec {
 
         mkdir -p "$out/labextensions/$labextension_name"
         # TODO: only copy over package.json, install.json, static, schemas, etc.
-        cp -r ./* "$out/labextensions/$labextension_name"
+        cp -r ./static/* "$out/labextensions/$labextension_name"
 
         cd "$PREV_DIR"
       fi;
