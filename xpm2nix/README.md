@@ -2,7 +2,7 @@
 
 Packages from other package managers like NPM can be converted to make them Nix packages. There are projects out there for doing this for different package managers, e.g.:
 
-- `poetry2nix`: Poetry (Python) to Nix
+- [`poetry2nix`](https://github.com/nix-community/poetry2nix): Poetry (Python) to Nix
 - `npm2nix`: NPM (JavaScript) to Nix
 - `composer2nix`: Composer (PHP) to Nix
 - multiple others...

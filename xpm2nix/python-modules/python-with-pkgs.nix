@@ -1,13 +1,118 @@
 {poetry2nix, R, lib, pythonOlder}:
-# For more info, see
-# http://datakurre.pandala.org/2015/10/nix-for-python-developers.html
-# https://nixos.org/nixos/nix-pills/developing-with-nix-shell.html
-# https://nixos.org/nix/manual/#sec-nix-shell
 
 with builtins;
 poetry2nix.mkPoetryEnv {
   projectDir = ./.;
   overrides = poetry2nix.overrides.withDefaults (self: super: {
+
+    aquirdturtle-collapsible-headings = super.aquirdturtle-collapsible-headings.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyter-resource-usage = super.jupyter-resource-usage.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab = super.jupyterlab.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab-code-formatter = super.jupyterlab-code-formatter.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+      preCheck = (oldAttrs.preCheck or "") + ''
+        # this is needed for rpy2 to pass its checks
+        # it was needed when I created the nixpkg myself. is it still needed here?
+        export R_HOME="${R}/lib/R"
+      '';
+      propagatedBuildInputs = (oldAttrs.propagatedBuildInputs or []) ++ [ R self.jupyterlab self.rpy2 ];
+    });
+
+    jupyterlab-drawio = super.jupyterlab-drawio.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab-hide-code = super.jupyterlab-hide-code.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab-system-monitor = super.jupyterlab-system-monitor.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab-topbar = super.jupyterlab-topbar.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupyterlab-vim = self.callPackage ./jupyterlab-vim.nix {jupyter-packaging=self.jupyter-packaging;};
+    jupyterlab-vimrc = self.callPackage ./jupyterlab-vimrc.nix {};
+
+    jupyterlab-widgets = super.jupyterlab-widgets.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+    });
+
+    jupytext = super.jupytext.overridePythonAttrs(oldAttrs: {
+      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
+        super.jupyter-packaging
+      ];
+      # TODO: why isn't the labextension in the python package by default?
+      #       Also, why do most packages duplicate it in lib and share?
+      postInstall = (oldAttrs.prePatch or "") + ''
+        mkdir -p "$out/lib/${super.python.libPrefix}/site-packages/jupytext/labextension"
+        cp -r ./jupytext/labextension/* "$out/lib/${super.python.libPrefix}/site-packages/jupytext/labextension/"
+
+        mkdir -p "$out/share/jupyter/labextensions/jupytext"
+        cp -r ./jupytext/labextension/* "$out/share/jupyter/labextensions/jupytext/"
+      '';
+    });
+
+    # markdown-it-py and mdit-py-plugins are currently cyclic dependencies.
+    #
+    # markdown-it-py depends on mdit-py-plugins as an extension and uses
+    # it during testing. Maybe it will eventually be removed as a dependency?
+    #
+    # The only way to install them is to explicitly require both:
+    #   poetry add --lock mdit-py-plugins markdown-it-py
+    #
+    # But then tell markdown-it-py that it doesn't depend on mdit-py-plugins,
+    # even though it actually does.
+    markdown-it-py = super.markdown-it-py.overridePythonAttrs(oldAttrs: {
+      # TODO: The following will need to be updated every time one of the
+      #       versions changes. Is there a better replace expression?
+      preConfigure = ''
+        substituteInPlace setup.py --replace \
+          'install_requires=["attrs>=19,<21", "mdit-py-plugins~=0.2.1"],' 'install_requires=["attrs>=19,<21"],'
+      '';
+       
+      # TODO: right now, the only dependencies in setup.py are attrs and
+      #       mdit-py-plugins, but if a new dependency is added, this
+      #       expression will no longer work. However, using subtractLists
+      #       doesn't work, because it makes mdit-py-plugins dependency again. 
+      propagatedBuildInputs = [super.attrs];
+      #propagatedBuildInputs = lib.subtractLists [super.mdit-py-plugins] oldAttrs.propagatedBuildInputs;
+       
+      # The tests for markdown-it-py currently depend on mdit-py-plugins.
+      # But the tests for mdit-py-plugins are presumably still enabled,
+      # so maybe we still do test markdown-it-py that way?
+      doCheck = false;
+    });
 
     ndex2 = super.ndex2.overridePythonAttrs(oldAttrs: {
       # The source requiremets.txt appears to want:
@@ -34,19 +139,8 @@ poetry2nix.mkPoetryEnv {
 #        nosetests -v
 #      '';
 
-      # Tests try to make network requests, so we can't run them
+      # These tests attempt to make network requests, so Nix can't run them.
       doCheck = false;
-    });
-
-    aquirdturtle-collapsible-headings = super.aquirdturtle-collapsible-headings.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-    jupyterlab = super.jupyterlab.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
     });
 
     rpy2 = super.rpy2.overridePythonAttrs(oldAttrs: {
@@ -103,52 +197,5 @@ poetry2nix.mkPoetryEnv {
 #      ];
 #    });
 
-    jupyterlab-code-formatter = super.jupyterlab-code-formatter.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-      preCheck = (oldAttrs.preCheck or "") + ''
-        # this is needed for rpy2 to pass its checks
-        # it was needed when I created the nixpkg myself. is it still needed here?
-        export R_HOME="${R}/lib/R"
-      '';
-      propagatedBuildInputs = (oldAttrs.propagatedBuildInputs or []) ++ [ R self.jupyterlab self.rpy2 ];
-    });
-
-    jupyterlab-drawio = super.jupyterlab-drawio.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-    jupyterlab-hide-code = super.jupyterlab-hide-code.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-
-    jupyterlab-system-monitor = super.jupyterlab-system-monitor.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-    jupyterlab-topbar = super.jupyterlab-topbar.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-    jupyter-resource-usage = super.jupyter-resource-usage.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
-
-    jupyterlab-vim = self.callPackage ./jupyterlab-vim.nix {jupyter-packaging=self.jupyter-packaging;};
-    jupyterlab-vimrc = self.callPackage ./jupyterlab-vimrc.nix {};
-
-    jupyterlab-widgets = super.jupyterlab-widgets.overridePythonAttrs(oldAttrs: {
-      nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [
-        super.jupyter-packaging
-      ];
-    });
   });
 }

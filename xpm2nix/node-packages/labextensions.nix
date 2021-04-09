@@ -80,8 +80,9 @@ stdenv.mkDerivation rec {
 
         # patch package.json
         mv package.json old-package.json
-        # TODO: how can I avoid this step?
-        jq '. * ({"devDependencies": {"@jupyterlab/builder": "3.0.5"}})' old-package.json >package.json
+        # TODO: how can I avoid this step, or at least better handle keeping up
+        # with the correct version?
+        jq '. * ({"devDependencies": {"@jupyterlab/builder": "^3.0.6"}})' old-package.json >package.json
 
         npm run build
         jupyter labextension build

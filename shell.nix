@@ -1,14 +1,29 @@
 with builtins;
+#13
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
+  # https://jupyter.readthedocs.io/en/latest/use/jupyter-directories.html
+  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
+  # https://jupyter-notebook.readthedocs.io/en/stable/config.html
+  # https://jupyter-server.readthedocs.io/en/latest/search.html?q=jupyter_server_config.json
+  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html
+
+  # set notebook root_dir in specs/jupyter_server_config.json
+  # ServerApp.root_dir
+
+  # and/or specs/jupyter_notebook_config.json
+  # NotebookApp.notebook_dir
+  # "notebook_dir": "/home/ariutta/Documents/pfocr2ndex/notebooks",
+
+  repoDir = toString ./.;
+  notebookDir = "${repoDir}/notebooks";
+
   # TODO: avoid impure directories.
 
   # this corresponds to notebook_dir (impure)
-  rootDirectoryImpure = toString ./.;
-
-  shareJupyterDirectory = "share/jupyter";
-  shareDirectoryImpure = "${rootDirectoryImpure}/${shareJupyterDirectory}";
+  impureRootDir = toString ./.;
+  impureShareJupyterDir = "${impureRootDir}/.share/jupyter";
 
   # Path to the JupyterWith folder.
   jupyterWithPath = builtins.fetchGit {
@@ -30,8 +45,6 @@ let
     rev = "ebd930f4d67ff658084281a9a71c6400ac2b912a";
     ref = "main";
   });
-
-  myspecs = ./specs;
 
   # Importing overlays
   overlays = [
@@ -135,6 +148,7 @@ let
 
       # similar question for nbconvert: where should we specify it?
       nbconvert
+      jupytext
 
       ################################
       # Non-Jupyter-specific packages
@@ -213,6 +227,12 @@ let
     ];
   };
 
+  shareJupyter = pkgs.callPackage ./share.nix {
+    inherit notebookDir;
+    inherit python3;
+    inherit npmLabextensions;
+  };
+
   npmLabextensions = pkgs.callPackage ./xpm2nix/node-packages/labextensions.nix {
     jq=pkgs.jq;
     nodejs=pkgs.nodejs;
@@ -226,7 +246,13 @@ let
       # Corresponds to JupyterLab Application Directory
       # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
       # Directory from which we serve notebooks
-      directory = "${rootDirectoryImpure}/${shareJupyterDirectory}/lab";
+      #
+      # this is what we used to use:
+      #directory = "${impureShareJupyterDir}/lab";
+      #
+      # I want to use this:
+      directory = "${shareJupyter}/lab";
+
       kernels = [ iPython irkernel ];
 
       # Add extra packages to the JupyterWith environment
@@ -241,6 +267,7 @@ let
         #tectonic
         # more info: https://nixos.wiki/wiki/TexLive
         p.texlive.combined.scheme-full
+        jupyterExtraPython.pkgs.nbconvert
 
         # TODO: these dependencies are only required when we want to build a
         # lab extension from source.
@@ -257,9 +284,16 @@ let
         # TODO: why isn't it enough that this is specified for jupyterExtraPython?
         jupyterExtraPython.pkgs.jupyter-lsp
         jupyterExtraPython.pkgs.jupyterlab-lsp
+
+        # TODO: @krassowski/jupyterlab-lsp:signature settings schema could not be found and was not loaded
+
         #python3.pkgs.jupyterlab-code-formatter
 
+        jupyterExtraPython.pkgs.jupytext
+
         p.R
+        
+        p.rsync
       ] ++ (with pkgs.rPackages; [
         ################################################
         # For server extensions that rely on R or R pkgs
@@ -296,8 +330,6 @@ let
 in
   jupyterEnvironment.env.overrideAttrs (oldAttrs: {
     shellHook = oldAttrs.shellHook + ''
-      mkdir -p ${rootDirectoryImpure}
-
       # this is needed in order that tools like curl and git can work with SSL
       # or maybe even just  for direnv?
       if [ ! -f "$SSL_CERT_FILE" ] || [ ! -f "$NIX_SSL_CERT_FILE" ]; then
@@ -327,6 +359,109 @@ in
       # Jupyter + JupyterLab
       ######################
 
+      # If directory $HOME/.ipython exists, jupyter looks for file(s)
+      # .share/jupyter/migrated and/or .share/jupyter/config/migrated.
+      # If the migrated file is read-only, we get an error.
+      #
+      # https://jupyter.readthedocs.io/en/latest/use/advanced/migrating.html
+      # https://github.com/jupyter/jupyter_core/issues/87
+
+      #---------
+      # set dirs
+      #---------
+
+      #chmod -R +w "${impureShareJupyterDir}"
+      #rm -rf "${impureShareJupyterDir}"
+      mkdir -p "${impureShareJupyterDir}"
+
+      if [ -e "${impureShareJupyterDir}/labextensions" ]; then
+        rm "${impureShareJupyterDir}/labextensions"
+      fi
+      ln -s "${shareJupyter}/labextensions" "${impureShareJupyterDir}/labextensions"
+
+      if [ -e "${impureShareJupyterDir}/nbextensions" ]; then
+        rm "${impureShareJupyterDir}/nbextensions"
+      fi
+      ln -s "${shareJupyter}/nbextensions" "${impureShareJupyterDir}/nbextensions"
+
+#      pure_share_jupyter_dir="${shareJupyter}"
+#      impure_share_jupyter_dir="${impureShareJupyterDir}"
+#      for x in $(ls -1 "$pure_share_jupyter_dir"); do
+#        if [ -e "$impure_share_jupyter_dir/$x" ]; then
+#          echo "$impure_share_jupyter_dir/$x already exists. Skipping." >&2
+#        else
+#          ln -s "$pure_share_jupyter_dir/$x" "$impure_share_jupyter_dir/$x"
+#        fi
+#      done
+
+      echo "${shareJupyter}" >&2
+
+      #rsync -r --copy-links "${shareJupyter}/"* "${impureShareJupyterDir}"
+      #cp -r "${shareJupyter}/"* "${impureShareJupyterDir}"
+      #chmod -R +w "${impureShareJupyterDir}"
+
+      #------------
+
+      # These directories can be immutable
+      export JUPYTER_CONFIG_DIR="${shareJupyter}/config"
+      export JUPYTERLAB_DIR="${shareJupyter}/lab"
+
+      #------------
+
+      # These directories must be mutable
+      #
+      # If JUPYTER_DATA_DIR is not mutable, I get the following error:
+      # Unexpected error while saving file: Untitled.ipynb HTTP 500: Internal Server Error
+      # (Unexpected error while saving file: Untitled.ipynb [Errno 30] Read-only file system: '/nix/store/rjcbrkd1br3d4kckw1m1ppn9ksv6sm0c-my-share-jupyter-0.0.0/notebook_secret')
+
+      # I also got an error when I created an R ipynb file and tried saving it:
+      #
+      # File Save Error for Untitled1.ipynb
+      # Unexpected error while saving file: Untitled1.ipynb HTTP 500: Internal Server Error (Unexpected error while saving file: Untitled1.ipynb attempt to write a readonly database)
+      #
+      # Possibly because this file changes when we create a new notebook:
+      # .share/jupyter/nbsignatures.db
+
+      export JUPYTER_DATA_DIR="${impureShareJupyterDir}"
+      mkdir -p "$JUPYTER_DATA_DIR"
+
+      export JUPYTERLAB_SETTINGS_DIR="${impureShareJupyterDir}/config/lab/user-settings/"
+      mkdir -p "$JUPYTERLAB_SETTINGS_DIR"
+
+      export JUPYTERLAB_WORKSPACES_DIR="${impureShareJupyterDir}/config/lab/workspaces/"
+      mkdir -p "$JUPYTERLAB_WORKSPACES_DIR"
+
+      export JUPYTER_RUNTIME_DIR="${impureShareJupyterDir}/runtime"
+      mkdir -p "$JUPYTER_RUNTIME_DIR"
+
+      #------------
+
+      # To see files that change:
+      #
+      # newer .share
+      # find .share/ -newermt '2021-04-12 19:00'
+      #
+      # or
+      #
+      # find .share/ -newer .share/jupyter/nbextensions/jupytext/jupytext_menu.png
+
+      # .share/jupyter/nbconvert/templates
+      # .share/jupyter/notebook_secret
+      # .share/jupyter/nbsignatures.db
+      # .share/jupyter/runtime/jupyter_cookie_secret
+      # .share/jupyter/runtime/jpserver-26238.json
+      #
+      # R or Python kernel launched:
+      # .share/jupyter/runtime/kernel-87d047eb-f646-473a-9f17-fac7fcfe7d75.json
+      #
+      # .share/jupyter/runtime/jpserver-26238-open.html
+      # .share/jupyter/config/lab/user-settings/@jupyterlab/application-extension/sidebar.jupyterlab-settings
+      # .share/jupyter/config/lab/workspaces/default-37a8.jupyterlab-workspace
+
+      #------------
+      # other stuff
+      #------------
+
       #export R_HOME="${pkgs.R}/lib/R"
       #export R_LIBS_SITE="$R_LIBS_SITE''${R_LIBS_SITE:+:}${pkgs.R}/lib/R/library:${pkgs.rPackages.languageserver}/library:${pkgs.rPackages.xml2}/library:${pkgs.rPackages.R6}/library"
       
@@ -345,11 +480,6 @@ in
       # and this:
       #direnv exec Documents/sandbox/pathway-figure-ocr/ R --version
 
-      export JUPYTER_DATA_DIR="${shareDirectoryImpure}"
-      export JUPYTER_CONFIG_DIR="${shareDirectoryImpure}/config"
-      export JUPYTER_RUNTIME_DIR="${shareDirectoryImpure}/runtime"
-      export JUPYTERLAB_DIR="${shareDirectoryImpure}/lab"
-
       # mybinder gave this message when launching:
       # Installation finished!  To ensure that the necessary environment
       # variables are set, either log in again, or type
@@ -360,260 +490,6 @@ in
 
       if [ -f /home/jovyan/.nix-profile/etc/profile.d/nix.sh ]; then
          . /home/jovyan/.nix-profile/etc/profile.d/nix.sh
-      fi
-
-      mkdir -p "${shareDirectoryImpure}"
-      mkdir -p "${shareDirectoryImpure}/runtime"
-
-      ##################
-      # Specify settings
-      ##################
-
-      # Specify a font for the Terminal to make the Powerline prompt look OK.
-
-      # TODO: should we install the fonts as part of this Nix definition?
-      # TODO: one setting is '"theme": "inherit"'. Where does it inherit from?
-      #       is it @jupyterlab/apputils-extension:themes.theme?
-
-      mkdir -p "${shareDirectoryImpure}/lab/settings"
-      if [ -h "${shareDirectoryImpure}/lab/settings/overrides.json" ]; then
-        rm "${shareDirectoryImpure}/lab/settings/overrides.json"
-      elif [ -f "${shareDirectoryImpure}/lab/settings/overrides.json" ]; then
-        echo "Replacing ${shareDirectoryImpure}/lab/settings/overrides.json" >&2
-        chmod +w "${shareDirectoryImpure}/lab/settings/overrides.json"
-        mv "${shareDirectoryImpure}/lab/settings/overrides.json" "${shareDirectoryImpure}/lab/settings/overrides.json.old"
-      fi
-      ln -s "${myspecs}/overrides.json" "${shareDirectoryImpure}/lab/settings/overrides.json"
-
-      # for other settings, open Settings > Advanced Settings Editor to take a look.
-
-      ##################
-      # specify configs
-      ##################
-
-      rm -rf "${shareDirectoryImpure}/config"
-      mkdir -p "${shareDirectoryImpure}/config"
-
-      # TODO: which of way of specifying server configs is better?
-      # 1. jupyter_server_config.json (single file w/ all jpserver_extensions.)
-      # 2. jupyter_server_config.d/ (directory holding multiple config files)
-      #                            jupyterlab.json
-      #                            jupyterlab_code_formatter.json
-      #                            ... 
-
-      #----------------------
-      # jupyter_server_config
-      #----------------------
-      # We need to set root_dir in config so that this command:
-      #   direnv exec ~/Documents/myenv jupyter lab start
-      # always results in root_dir being ~/Documents/myenv.
-      # Otherwise, running that command from $HOME makes root_dir be $HOME.
-      #
-      # TODO: what is the difference between these two:
-      # - ServerApp.jpserver_extensions
-      # - NotebookApp.nbserver_extensions
-      #
-      # If I don't include jupyterlab_code_formatter in
-      # ServerApp.jpserver_extensions, I get the following error
-      #   Jupyterlab Code Formatter Error
-      #   Unable to find server plugin version, this should be impossible,open a GitHub issue if you cannot figure this issue out yourself.
-      #
-      if [ -h "${shareDirectoryImpure}/config/jupyter_server_config.json" ]; then
-        # if it's a symlink, just delete it
-        rm "${shareDirectoryImpure}/config/jupyter_server_config.json"
-      elif [ -f "${shareDirectoryImpure}/config/jupyter_server_config.json" ]; then
-        echo "Replacing ${shareDirectoryImpure}/config/jupyter_server_config.json" >&2
-        chmod +w "${shareDirectoryImpure}/config/jupyter_server_config.json"
-        mv "${shareDirectoryImpure}/config/jupyter_server_config.json" "${shareDirectoryImpure}/config/jupyter_server_config.json.old"
-      fi
-      substitute "${myspecs}/jupyter_server_config.json" "${shareDirectoryImpure}/config/jupyter_server_config.json" --subst-var-by rootDirectoryImpure "${rootDirectoryImpure}"
-
-      #------------------------
-      # jupyter_notebook_config
-      #------------------------
-      # The packages listed by 'jupyter-serverextension list' come from
-      # what is specified in ./config/jupyter_notebook_config.json.
-      # Yes, as confusing as it may be, it does appear that 'server extensions'
-      # are specified in jupyter_notebook_config, not jupyter_server_config.
-      #
-      # We hide the bare-bones python3 kernel in JupyterLab, b/c we want to see
-      # our customized python kernel that has our desired packages, not the
-      # default python kernel that has no packages. We do so with this bit:
-      # "ensure_native_kernel": false
-      # More discussion:
-      # https://github.com/jupyter/notebook/issues/3674
-      # https://github.com/tweag/jupyterWith/issues/101
-      #
-      if [ -h "${shareDirectoryImpure}/config/jupyter_notebook_config.json" ]; then
-        # if it's a symlink, just delete it
-        rm "${shareDirectoryImpure}/config/jupyter_notebook_config.json"
-      elif [ -f "${shareDirectoryImpure}/config/jupyter_notebook_config.json" ]; then
-        echo "Replacing ${shareDirectoryImpure}/config/jupyter_notebook_config.json" >&2
-        chmod +w "${shareDirectoryImpure}/config/jupyter_notebook_config.json"
-        mv "${shareDirectoryImpure}/config/jupyter_notebook_config.json" "${shareDirectoryImpure}/config/jupyter_notebook_config.json.old"
-      fi
-      ln -s "${myspecs}/jupyter_notebook_config.json" "${shareDirectoryImpure}/config/jupyter_notebook_config.json"
-
-      #-------------------
-      # widgetsnbextension
-      #-------------------
-      # Not completely sure why this is needed, but without it, things didn't work.
-      mkdir -p "${shareDirectoryImpure}/config/nbconfig/notebook.d"
-      if [ -h "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json" ]; then
-        # if it's a symlink, just delete it
-        rm "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json"
-      elif [ -f "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json" ]; then
-        echo "Replacing ${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json" >&2
-        chmod +w "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json"
-        mv "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json" "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json.old"
-      fi
-      ln -s "${myspecs}/widgetsnbextension.json" "${shareDirectoryImpure}/config/nbconfig/notebook.d/widgetsnbextension.json"
-
-      ##################################
-      # prebuilt lab extensions
-      # symlink dirs into share/jupyter
-      ##################################
-
-      rm -rf "${shareDirectoryImpure}/labextensions"
-      mkdir -p "${shareDirectoryImpure}/labextensions"
-
-      # Note the prebuilt lab extensions are distributed via PyPI as "python"
-      # packages, even though they are really JS, HTML and CSS.
-      #
-      # Symlink targets may generally use snake_case, but not always.
-      #
-      # The lab extension code appears to be in two places in the python packge:
-      # 1) lib/python3.8/site-packages/snake_case_pkg_name/labextension
-      # 2) share/jupyter/labextensions/dash-case-pkg-name
-      # These directories are identical, except share/... has file install.json.
-
-      # jupyterlab_hide_code
-      #
-      # When the symlink target is 'jupyterlab-hide-code' (dash-case), the lab extension
-      # works, but not when the symlink target is 'jupyterlab_hide_code' (snake_case).
-      #
-      # When using target share/..., the command 'jupyter-labextension list'
-      # adds some extra info to the end:
-      #   jupyterlab-hide-code v3.0.1 enabled OK (python, jupyterlab_hide_code)
-      # When using target lib/..., we get just this:
-      #   jupyterlab-hide-code v3.0.1 enabled OK
-      # This difference could be due to the install.json being in share/...
-      #
-      ln -s "${python3.pkgs.jupyterlab-hide-code}/share/jupyter/labextensions/jupyterlab-hide-code" "${shareDirectoryImpure}/labextensions/jupyterlab-hide-code"
-
-      # @axlair/jupyterlab_vim
-      mkdir -p "${shareDirectoryImpure}/labextensions/@axlair"
-      ln -s "${python3.pkgs.jupyterlab-vim}/lib/${python3.libPrefix}/site-packages/jupyterlab_vim/labextension" "${shareDirectoryImpure}/labextensions/@axlair/jupyterlab_vim"
-
-      # jupyterlab-vimrc
-      ln -s "${python3.pkgs.jupyterlab-vimrc}/lib/${python3.libPrefix}/site-packages/jupyterlab-vimrc" "${shareDirectoryImpure}/labextensions/jupyterlab-vimrc"
-
-      # @krassowski/jupyterlab-lsp
-      mkdir -p "${shareDirectoryImpure}/labextensions/@krassowski"
-      ln -s "${python3.pkgs.jupyterlab-lsp}/share/jupyter/labextensions/@krassowski/jupyterlab-lsp" "${shareDirectoryImpure}/labextensions/@krassowski/jupyterlab-lsp"
-
-      # @ryantam626/jupyterlab_code_formatter
-      mkdir -p "${shareDirectoryImpure}/labextensions/@ryantam626"
-      #ln -s "${python3.pkgs.jupyterlab-code-formatter}/share/jupyter/labextensions/@ryantam626/jupyterlab_code_formatter" "${shareDirectoryImpure}/labextensions/@ryantam626/jupyterlab_code_formatter"
-      ln -s "${python3.pkgs.jupyterlab-code-formatter}/lib/${python3.libPrefix}/site-packages/jupyterlab_code_formatter/labextension" "${shareDirectoryImpure}/labextensions/@ryantam626/jupyterlab_code_formatter"
-
-      # jupyterlab-drawio
-      ln -s "${python3.pkgs.jupyterlab-drawio}/lib/${python3.libPrefix}/site-packages/jupyterlab-drawio/labextension" "${shareDirectoryImpure}/labextensions/jupyterlab-drawio"
-
-      # @aquirdturtle/collapsible_headings
-      mkdir -p "${shareDirectoryImpure}/labextensions/@aquirdturtle"
-      ln -s "${python3.pkgs.aquirdturtle-collapsible-headings}/share/jupyter/labextensions/@aquirdturtle/collapsible_headings" "${shareDirectoryImpure}/labextensions/@aquirdturtle/collapsible_headings"
-
-      # jupyterlab-system-monitor depends on jupyterlab-topbar and jupyter-resource-usage
-
-      # jupyterlab-topbar
-      ln -s "${python3.pkgs.jupyterlab-topbar}/lib/${python3.libPrefix}/site-packages/jupyterlab-topbar/labextension" "${shareDirectoryImpure}/labextensions/jupyterlab-topbar-extension"
-
-      # jupyter-resource-usage
-      mkdir -p "${shareDirectoryImpure}/labextensions/@jupyter-server"
-      ln -s "${python3.pkgs.jupyter-resource-usage}/share/jupyter/labextensions/@jupyter-server/resource-usage" "${shareDirectoryImpure}/labextensions/@jupyter-server/resource-usage"
-
-      # jupyterlab-system-monitor
-      ln -s "${python3.pkgs.jupyterlab-system-monitor}/lib/${python3.libPrefix}/site-packages/jupyterlab-system-monitor/labextension" "${shareDirectoryImpure}/labextensions/jupyterlab-system-monitor"
-
-      #---------------------------------
-      # Prebuilt lab extensions from NPM
-      #---------------------------------
-
-      # Take a source lab extension from NPM and prebuild it for Nix.
-      # It's probably better to just always use the prebuilt lab extensions
-      # PyPi, but this is a demo to show it's possible to do NPM -> Nix.
-      for d in $(ls -1 "${npmLabextensions}/labextensions"); do
-        ln -s "${npmLabextensions}/labextensions/$d" "${shareDirectoryImpure}/labextensions/$d"
-      done
-
-      ####################################
-      # JupyterLab + source lab extensions
-      ####################################
-
-      # A source lab extension is an uncompiled JS package (e.g., from NPM).
-      # Source extensions are built into JupyterLab.
-      # To install one, we compile it together with JupyterLab, producing
-      # a built version of JupyterLab that incorporates the lab extension.
-      #
-      # More info:
-      # https://jupyterlab.readthedocs.io/en/stable/extension/extension_dev.html#developer-extensions
-
-      if [ ! -d "${shareDirectoryImpure}/lab/static" ]; then
-        # Don't build JupyterLab unless necessary. It takes a long time.
-        # If JupyterLab has already been built and there haven't been any changes
-        # to JupyterLab or the source lab extensions, we can safely re-use the
-        # previous build.
-        #
-        # We are using the '${shareDirectoryImpure}/lab/static/' directory as a
-        # proxy for indicating whether JupyterLab has been built. If you want to
-        # rebuild, delete '${shareDirectoryImpure}/lab' and reload.
-
-        mkdir -p "${shareDirectoryImpure}/lab"
-        mkdir -p "${shareDirectoryImpure}/lab/staging"
-
-        #------------------------
-        # build jupyter lab alone
-        #------------------------
-
-        # Note: we pipe stdout to stderr because otherwise $(cat "$\{dump\}")
-        # would contain something that should not be evaluated.
-        # Look at 'eval $(cat "$\{dump\}")' in ./.envrc file.
-
-        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-        jupyter lab build >&2
-
-#        #--------------------------
-#        # add source lab extensions
-#        #--------------------------
-#        # Specifying --no-build so that we can just build once afterward
-#
-#        # https://github.com/arbennett/jupyterlab-themes
-#
-#        # Note: we prebuilt this one, so commenting it out here
-#        #chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-#        #jupyter labextension install --no-build @arbennett/base16-gruvbox-dark >&2
-#
-#        # Note: we could prebuild this one too, but for now, I left it here as a
-#        # demo of installing a source lab extension.
-#        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-#        jupyter labextension install --no-build @arbennett/base16-gruvbox-light >&2
-#
-#        #-------------------------------------------
-#        # build jupyter lab w/ source lab extensions
-#        #-------------------------------------------
-#
-#        # It would be nice to be able to just build once here at the end, but the
-#        # build process appears to fail unless I build once for jupyter lab alone
-#        # then again after adding source lab extensions.
-#
-        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-        jupyter lab build >&2
-
-        chmod -R +w "${shareDirectoryImpure}/lab/staging/"
-        rm -rf "${shareDirectoryImpure}/lab/staging/"
-      else
-        echo "jupyterlab: skipping build of self + source extensions" >&2
       fi
     '';
   })
