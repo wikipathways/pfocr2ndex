@@ -227,14 +227,11 @@ let
   shareJupyter = pkgs.callPackage ./share.nix {
     inherit notebookDir;
     inherit python3;
-    inherit npmLabextensions;
-  };
-
-  npmLabextensions = pkgs.callPackage ./xpm2nix/node-packages/labextensions.nix {
+    callPackage=pkgs.callPackage;
     jq=pkgs.jq;
-    nodejs=pkgs.nodejs;
     jupyter=jupyterExtraPython.pkgs.jupyter;
     jupyterlab=jupyterExtraPython.pkgs.jupyterlab;
+    nodejs=pkgs.nodejs;
     setuptools=jupyterExtraPython.pkgs.setuptools;
   };
 

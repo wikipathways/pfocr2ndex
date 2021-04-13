@@ -2,7 +2,12 @@
 , lib
 , notebookDir
 , python3
-, npmLabextensions
+, callPackage
+, jq
+, nodejs
+, jupyter
+, jupyterlab
+, setuptools
 }:
 
 with builtins;
@@ -10,6 +15,13 @@ with builtins;
 let
   baseName = "my-share-jupyter";
   version = "0.0.0";
+  npmLabextensions = callPackage ./xpm2nix/node-packages/labextensions.nix {
+    inherit jq;
+    inherit jupyter;
+    inherit jupyterlab;
+    inherit nodejs;
+    inherit setuptools;
+  };
 in
 stdenv.mkDerivation rec {
   name = (concatStringsSep "-" [baseName version]);
