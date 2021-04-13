@@ -17,13 +17,11 @@ let
   # "notebook_dir": "/home/ariutta/Documents/pfocr2ndex/notebooks",
 
   repoDir = toString ./.;
+  # in some cases, notebookDir will be the same as repoDir
   notebookDir = "${repoDir}/notebooks";
 
-  # TODO: avoid impure directories.
-
-  # this corresponds to notebook_dir (impure)
-  impureRootDir = toString ./.;
-  impureShareJupyterDir = "${impureRootDir}/.share/jupyter";
+  # for local settings, workspaces, etc.
+  mutableJupyterDir = "${repoDir}/.share/jupyter";
 
   # Path to the JupyterWith folder.
   jupyterWithPath = builtins.fetchGit {
@@ -248,7 +246,7 @@ let
       # Directory from which we serve notebooks
       #
       # this is what we used to use:
-      #directory = "${impureShareJupyterDir}/lab";
+      #directory = "${mutableJupyterDir}/lab";
       #
       # I want to use this:
       directory = "${shareJupyter}/lab";
@@ -359,58 +357,48 @@ in
       # Jupyter + JupyterLab
       ######################
 
-      # If directory $HOME/.ipython exists, jupyter looks for file(s)
-      # .share/jupyter/migrated and/or .share/jupyter/config/migrated.
-      # If the migrated file is read-only, we get an error.
-      #
-      # https://jupyter.readthedocs.io/en/latest/use/advanced/migrating.html
-      # https://github.com/jupyter/jupyter_core/issues/87
-
       #---------
       # set dirs
       #---------
 
-      #chmod -R +w "${impureShareJupyterDir}"
-      #rm -rf "${impureShareJupyterDir}"
-      mkdir -p "${impureShareJupyterDir}"
+      mkdir -p "${mutableJupyterDir}"
 
-      if [ -e "${impureShareJupyterDir}/labextensions" ]; then
-        rm "${impureShareJupyterDir}/labextensions"
-      fi
-      ln -s "${shareJupyter}/labextensions" "${impureShareJupyterDir}/labextensions"
+      # These directories are OK with being immutable:
 
-      if [ -e "${impureShareJupyterDir}/nbextensions" ]; then
-        rm "${impureShareJupyterDir}/nbextensions"
-      fi
-      ln -s "${shareJupyter}/nbextensions" "${impureShareJupyterDir}/nbextensions"
-
-#      pure_share_jupyter_dir="${shareJupyter}"
-#      impure_share_jupyter_dir="${impureShareJupyterDir}"
-#      for x in $(ls -1 "$pure_share_jupyter_dir"); do
-#        if [ -e "$impure_share_jupyter_dir/$x" ]; then
-#          echo "$impure_share_jupyter_dir/$x already exists. Skipping." >&2
-#        else
-#          ln -s "$pure_share_jupyter_dir/$x" "$impure_share_jupyter_dir/$x"
-#        fi
-#      done
-
-      echo "${shareJupyter}" >&2
-
-      #rsync -r --copy-links "${shareJupyter}/"* "${impureShareJupyterDir}"
-      #cp -r "${shareJupyter}/"* "${impureShareJupyterDir}"
-      #chmod -R +w "${impureShareJupyterDir}"
-
-      #------------
-
-      # These directories can be immutable
       export JUPYTER_CONFIG_DIR="${shareJupyter}/config"
       export JUPYTERLAB_DIR="${shareJupyter}/lab"
 
-      #------------
+      # These directories themselves are OK with being immutable, but I only
+      # know how to point Jupyter to them via JUPYTER_DATA_DIR, which must be
+      # immutable. So I add symlinks to the latest immutable directories
+      # from within the mutable JUPYTER_DATA_DIR.
 
-      # These directories must be mutable
-      #
-      # If JUPYTER_DATA_DIR is not mutable, I get the following error:
+      if [ -e "${mutableJupyterDir}/labextensions" ]; then
+        rm "${mutableJupyterDir}/labextensions"
+      fi
+      ln -s "${shareJupyter}/labextensions" "${mutableJupyterDir}/labextensions"
+
+      if [ -e "${mutableJupyterDir}/nbextensions" ]; then
+        rm "${mutableJupyterDir}/nbextensions"
+      fi
+      ln -s "${shareJupyter}/nbextensions" "${mutableJupyterDir}/nbextensions"
+
+      # These directories must be mutable:
+
+      export JUPYTER_DATA_DIR="${mutableJupyterDir}"
+      mkdir -p "$JUPYTER_DATA_DIR"
+
+      # if we don't want to allow the user to specify settings, this could be made immutable
+      export JUPYTERLAB_SETTINGS_DIR="${mutableJupyterDir}/config/lab/user-settings/"
+      mkdir -p "$JUPYTERLAB_SETTINGS_DIR"
+
+      export JUPYTERLAB_WORKSPACES_DIR="${mutableJupyterDir}/config/lab/workspaces/"
+      mkdir -p "$JUPYTERLAB_WORKSPACES_DIR"
+
+      export JUPYTER_RUNTIME_DIR="${mutableJupyterDir}/runtime"
+      mkdir -p "$JUPYTER_RUNTIME_DIR"
+
+      # If JUPYTER_DATA_DIR is made immutable, I get the following error:
       # Unexpected error while saving file: Untitled.ipynb HTTP 500: Internal Server Error
       # (Unexpected error while saving file: Untitled.ipynb [Errno 30] Read-only file system: '/nix/store/rjcbrkd1br3d4kckw1m1ppn9ksv6sm0c-my-share-jupyter-0.0.0/notebook_secret')
 
@@ -422,21 +410,7 @@ in
       # Possibly because this file changes when we create a new notebook:
       # .share/jupyter/nbsignatures.db
 
-      export JUPYTER_DATA_DIR="${impureShareJupyterDir}"
-      mkdir -p "$JUPYTER_DATA_DIR"
-
-      export JUPYTERLAB_SETTINGS_DIR="${impureShareJupyterDir}/config/lab/user-settings/"
-      mkdir -p "$JUPYTERLAB_SETTINGS_DIR"
-
-      export JUPYTERLAB_WORKSPACES_DIR="${impureShareJupyterDir}/config/lab/workspaces/"
-      mkdir -p "$JUPYTERLAB_WORKSPACES_DIR"
-
-      export JUPYTER_RUNTIME_DIR="${impureShareJupyterDir}/runtime"
-      mkdir -p "$JUPYTER_RUNTIME_DIR"
-
-      #------------
-
-      # To see files that change:
+      # To identify which files must be mutable, make all dirs mutable and then:
       #
       # newer .share
       # find .share/ -newermt '2021-04-12 19:00'
