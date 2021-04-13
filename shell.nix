@@ -383,6 +383,26 @@ in
       fi
       ln -s "${shareJupyter}/nbextensions" "${mutableJupyterDir}/nbextensions"
 
+      local_nbconvert_templates_dir="${mutableJupyterDir}/nbconvert/templates"
+      if [ -e "$local_nbconvert_templates_dir" ]; then
+        rm -rf "$local_nbconvert_templates_dir"
+      fi
+      mkdir -p "$local_nbconvert_templates_dir"
+      for x in $(ls -1 "${python3.pkgs.nbconvert}/share/jupyter/nbconvert/templates"); do
+        if [ -e "$local_nbconvert_templates_dir/$x" ]; then
+          echo "$local_nbconvert_templates_dir/$x already exists. Merge contents, prioritizing ${python3.pkgs.nbconvert}." >&2
+          mv "$local_nbconvert_templates_dir/$x" custom
+          cp -r "${python3.pkgs.jupyterlab}/share/jupyter/lab/$x" "$local_nbconvert_templates_dir/$x"
+          chmod -R +w "$local_nbconvert_templates_dir/$x"
+          cp -r custom/* "$local_nbconvert_templates_dir/$x/"
+          chmod -R -w "$local_nbconvert_templates_dir/$x"
+        else
+          ln -s "${python3.pkgs.nbconvert}/share/jupyter/nbconvert/templates/$x" "$local_nbconvert_templates_dir/$x"
+        fi
+      done
+
+      echo "${python3.pkgs.nbconvert}" >&2
+
       # These directories must be mutable:
 
       export JUPYTER_DATA_DIR="${mutableJupyterDir}"
