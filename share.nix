@@ -159,6 +159,9 @@ stdenv.mkDerivation rec {
     # 2) share/jupyter/labextensions/dash-case-pkg-name
     # These directories are identical, except share/... has file install.json.
 
+    # TODO: can we just specify a list of prebuilt lab extensions and run each
+    # one through a function in order to create all the required symlinks?
+
     # jupyterlab_hide_code
     #
     # When the symlink target is 'jupyterlab-hide-code' (dash-case), the lab extension
@@ -229,16 +232,16 @@ stdenv.mkDerivation rec {
     mkdir -p "$out/lab"
     # TODO: why do I need to mess with permissions here?
     chmod -R +w "$out/lab/"
-    for d in $(ls -1 "${python3.pkgs.jupyterlab}/share/jupyter/lab"); do
-      if [ -e "$out/lab/$d" ]; then
-        echo "$out/lab/$d already exists. Merge contents, prioritizing ${src}." >&2
-        mv "$out/lab/$d" custom
-        cp -r "${python3.pkgs.jupyterlab}/share/jupyter/lab/$d" "$out/lab/$d"
-        chmod -R +w "$out/lab/$d"
-        cp -r custom/* "$out/lab/$d/"
-        chmod -R -w "$out/lab/$d"
+    for x in $(ls -1 "${python3.pkgs.jupyterlab}/share/jupyter/lab"); do
+      if [ -e "$out/lab/$x" ]; then
+        echo "$out/lab/$x already exists. Merge contents, prioritizing ${src}." >&2
+        mv "$out/lab/$x" custom
+        cp -r "${python3.pkgs.jupyterlab}/share/jupyter/lab/$x" "$out/lab/$x"
+        chmod -R +w "$out/lab/$x"
+        cp -r custom/* "$out/lab/$x/"
+        chmod -R -w "$out/lab/$x"
       else
-        ln -s "${python3.pkgs.jupyterlab}/share/jupyter/lab/$d" "$out/lab/$d"
+        ln -s "${python3.pkgs.jupyterlab}/share/jupyter/lab/$x" "$out/lab/$x"
       fi
     done
     chmod -R -w "$out/lab/"

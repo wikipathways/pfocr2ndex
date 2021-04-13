@@ -1,5 +1,4 @@
 with builtins;
-#13
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
@@ -265,7 +264,18 @@ let
         #tectonic
         # more info: https://nixos.wiki/wiki/TexLive
         p.texlive.combined.scheme-full
+        # not sure the following needs to be specified here:
         jupyterExtraPython.pkgs.nbconvert
+
+        # still getting some errors:
+        # nbconvert failed: Pyppeteer is not installed to support Web PDF conversion. Please install `nbconvert[webpdf]` to enable.
+        # - and -
+        # nbconvert failed: PDF creating failed, captured latex output:
+        # Failed to run "['xelatex', 'notebook.tex', '-quiet']" command:
+        # ...
+        # (/nix/store/llmvlb5wpjrmp4ckxw4g21qn4syyhjpv-texlive-combined-full-2020.2021010
+        # 9/share/texmf/tex/latex/base/size11.cloFontconfig warning: "/etc/fonts/fonts.conf", line 86: unknown element "blank"
+        # ))
 
         # TODO: these dependencies are only required when we want to build a
         # lab extension from source.
@@ -363,15 +373,15 @@ in
 
       mkdir -p "${mutableJupyterDir}"
 
-      # These directories are OK with being immutable:
+      # The following directories are OK with being immutable:
 
       export JUPYTER_CONFIG_DIR="${shareJupyter}/config"
       export JUPYTERLAB_DIR="${shareJupyter}/lab"
 
-      # These directories themselves are OK with being immutable, but I only
-      # know how to point Jupyter to them via JUPYTER_DATA_DIR, which must be
-      # immutable. So I add symlinks to the latest immutable directories
-      # from within the mutable JUPYTER_DATA_DIR.
+      # The following directories are themselves OK with being immutable, but I
+      # only know how to point Jupyter to them via JUPYTER_DATA_DIR, which must
+      # be immutable. So I add symlinks pointing to the latest immutable
+      # directories from within the mutable JUPYTER_DATA_DIR.
 
       if [ -e "${mutableJupyterDir}/labextensions" ]; then
         rm "${mutableJupyterDir}/labextensions"
@@ -383,27 +393,12 @@ in
       fi
       ln -s "${shareJupyter}/nbextensions" "${mutableJupyterDir}/nbextensions"
 
-      local_nbconvert_templates_dir="${mutableJupyterDir}/nbconvert/templates"
-      if [ -e "$local_nbconvert_templates_dir" ]; then
-        rm -rf "$local_nbconvert_templates_dir"
+      if [ -e "${mutableJupyterDir}/nbconvert" ]; then
+        rm "${mutableJupyterDir}/nbconvert"
       fi
-      mkdir -p "$local_nbconvert_templates_dir"
-      for x in $(ls -1 "${python3.pkgs.nbconvert}/share/jupyter/nbconvert/templates"); do
-        if [ -e "$local_nbconvert_templates_dir/$x" ]; then
-          echo "$local_nbconvert_templates_dir/$x already exists. Merge contents, prioritizing ${python3.pkgs.nbconvert}." >&2
-          mv "$local_nbconvert_templates_dir/$x" custom
-          cp -r "${python3.pkgs.jupyterlab}/share/jupyter/lab/$x" "$local_nbconvert_templates_dir/$x"
-          chmod -R +w "$local_nbconvert_templates_dir/$x"
-          cp -r custom/* "$local_nbconvert_templates_dir/$x/"
-          chmod -R -w "$local_nbconvert_templates_dir/$x"
-        else
-          ln -s "${python3.pkgs.nbconvert}/share/jupyter/nbconvert/templates/$x" "$local_nbconvert_templates_dir/$x"
-        fi
-      done
+      ln -s "${python3.pkgs.nbconvert}/share/jupyter/nbconvert" "${mutableJupyterDir}/nbconvert"
 
-      echo "${python3.pkgs.nbconvert}" >&2
-
-      # These directories must be mutable:
+      # The following directories must be mutable:
 
       export JUPYTER_DATA_DIR="${mutableJupyterDir}"
       mkdir -p "$JUPYTER_DATA_DIR"
