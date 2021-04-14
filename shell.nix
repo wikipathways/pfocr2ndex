@@ -1,5 +1,5 @@
 with builtins;
-#4
+#14
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
@@ -112,8 +112,9 @@ let
   jupyterExtraPythonResult = pkgs.callPackage ./xpm2nix/python-modules/python-with-pkgs.nix {
     pythonOlder = pkgs.python3.pythonOlder;
   };
-  jupyterExtraPython = jupyterExtraPythonResult.poetryEnv;
-  python3 = jupyterExtraPython;
+  pythonEnv = jupyterExtraPythonResult.poetryEnv;
+  topLevelPythonPackages = jupyterExtraPythonResult.topLevelPythonPackages;
+  python3 = pythonEnv;
 
   jupyter = pkgs.jupyterWith;
 
@@ -226,16 +227,31 @@ let
     ];
   };
 
-  shareJupyter = pkgs.callPackage ./share.nix {
-    inherit notebookDir;
-    inherit python3;
-    jupyterExtraPythonResult=jupyterExtraPythonResult;
-    callPackage=pkgs.callPackage;
+  npmLabextensions = pkgs.callPackage ./xpm2nix/node-packages/labextensions.nix {
     jq=pkgs.jq;
-    jupyter=jupyterExtraPython.pkgs.jupyter;
-    jupyterlab=jupyterExtraPython.pkgs.jupyterlab;
+    jupyter=pythonEnv.pkgs.jupyter;
+    jupyterlab=pythonEnv.pkgs.jupyterlab;
     nodejs=pkgs.nodejs;
-    setuptools=jupyterExtraPython.pkgs.setuptools;
+    setuptools=pythonEnv.pkgs.setuptools;
+  };
+
+  shareSrc = ./share-src;
+  shareJupyter = pkgs.symlinkJoin {
+    name = "my-share-jupyter";
+    paths = (pkgs.lib.lists.map (x: "${x}/share/jupyter") (
+      (pkgs.lib.lists.map (x: pkgs.lib.attrsets.getAttr(x.name) pythonEnv.pkgs) (
+        pkgs.lib.lists.filter (x: x ? dependencies.jupyterlab) topLevelPythonPackages
+      )) ++ (
+        with pythonEnv.pkgs; [jupyterlab jupytext widgetsnbextension jupyter-resource-usage nbconvert]
+      ))
+    ) ++ [npmLabextensions shareSrc];
+    postBuild = ''
+      rm "$out/config/jupyter_server_config.json"
+      substitute "${shareSrc}/config/jupyter_server_config.json" "$out/config/jupyter_server_config.json" --subst-var-by notebookDir "${notebookDir}"
+
+      rm "$out/config/jupyter_notebook_config.json"
+      substitute "${shareSrc}/config/jupyter_notebook_config.json" "$out/config/jupyter_notebook_config.json" --subst-var-by notebookDir "${notebookDir}"
+    '';
   };
 
   jupyterEnvironment =
@@ -265,7 +281,7 @@ let
         # more info: https://nixos.wiki/wiki/TexLive
         p.texlive.combined.scheme-full
         # not sure the following needs to be specified here:
-        jupyterExtraPython.pkgs.nbconvert
+        pythonEnv.pkgs.nbconvert
 
         # still getting some errors:
         # nbconvert failed: Pyppeteer is not installed to support Web PDF conversion. Please install `nbconvert[webpdf]` to enable.
@@ -283,21 +299,21 @@ let
         p.nodejs
         p.yarn
 
-        # Note: jupyterExtraPython has packages for augmenting Jupyter as well
+        # Note: pythonEnv has packages for augmenting Jupyter as well
         # as for other purposes.
         # TODO: should it be specified here?
-        jupyterExtraPython
+        pythonEnv
 
         # jupyterlab-lsp must be specified here in order for the LSP for R to work.
-        # TODO: why isn't it enough that this is specified for jupyterExtraPython?
-        jupyterExtraPython.pkgs.jupyter-lsp
-        jupyterExtraPython.pkgs.jupyterlab-lsp
+        # TODO: why isn't it enough that this is specified for pythonEnv?
+        pythonEnv.pkgs.jupyter-lsp
+        pythonEnv.pkgs.jupyterlab-lsp
 
         # TODO: @krassowski/jupyterlab-lsp:signature settings schema could not be found and was not loaded
 
-        #python3.pkgs.jupyterlab-code-formatter
+        #pythonEnv.pkgs.jupyterlab-code-formatter
 
-        jupyterExtraPython.pkgs.jupytext
+        pythonEnv.pkgs.jupytext
 
         p.R
         
@@ -332,7 +348,7 @@ let
       # Make paths available to Jupyter itself, generally for server extensions
       extraJupyterPath = pkgs:
         concatStringsSep ":" [
-          "${jupyterExtraPython}/lib/${jupyterExtraPython.libPrefix}/site-packages"
+          "${pythonEnv}/${python3.sitePackages}"
         ];
     };
 in
@@ -396,7 +412,7 @@ in
       if [ -e "${mutableJupyterDir}/nbconvert" ]; then
         rm "${mutableJupyterDir}/nbconvert"
       fi
-      ln -s "${python3.pkgs.nbconvert}/share/jupyter/nbconvert" "${mutableJupyterDir}/nbconvert"
+      ln -s "${shareJupyter}/nbconvert" "${mutableJupyterDir}/nbconvert"
 
       # The following directories must be mutable:
 
@@ -480,8 +496,5 @@ in
       if [ -f /home/jovyan/.nix-profile/etc/profile.d/nix.sh ]; then
          . /home/jovyan/.nix-profile/etc/profile.d/nix.sh
       fi
-
-      echo "python3.pkgs.jupyterlab-vim: ${python3.pkgs.jupyterlab-vim}" >&2
-      echo "python3.sitePackages: ${python3.sitePackages}" >&2
     '';
   })

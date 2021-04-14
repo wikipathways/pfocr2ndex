@@ -203,8 +203,8 @@ in
       projectDir = ./.;
       overrides = overrides;
     };
-    poetryPackages = poetry2nix.mkPoetryPackages {
+    topLevelPythonPackages = (poetry2nix.mkPoetryPackages {
       projectDir = ./.;
       overrides = overrides;
-    };
+    }).poetryLock.package;
   }
