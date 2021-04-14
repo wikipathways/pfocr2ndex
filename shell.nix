@@ -1,4 +1,5 @@
 with builtins;
+#4
 
 let
   # TODO: rename these directory variables to match what Jupyter uses.
@@ -108,9 +109,10 @@ let
   # Python
   #########################
 
-  jupyterExtraPython = pkgs.callPackage ./xpm2nix/python-modules/python-with-pkgs.nix {
+  jupyterExtraPythonResult = pkgs.callPackage ./xpm2nix/python-modules/python-with-pkgs.nix {
     pythonOlder = pkgs.python3.pythonOlder;
   };
+  jupyterExtraPython = jupyterExtraPythonResult.poetryEnv;
   python3 = jupyterExtraPython;
 
   jupyter = pkgs.jupyterWith;
@@ -227,6 +229,7 @@ let
   shareJupyter = pkgs.callPackage ./share.nix {
     inherit notebookDir;
     inherit python3;
+    jupyterExtraPythonResult=jupyterExtraPythonResult;
     callPackage=pkgs.callPackage;
     jq=pkgs.jq;
     jupyter=jupyterExtraPython.pkgs.jupyter;
@@ -477,5 +480,8 @@ in
       if [ -f /home/jovyan/.nix-profile/etc/profile.d/nix.sh ]; then
          . /home/jovyan/.nix-profile/etc/profile.d/nix.sh
       fi
+
+      echo "python3.pkgs.jupyterlab-vim: ${python3.pkgs.jupyterlab-vim}" >&2
+      echo "python3.sitePackages: ${python3.sitePackages}" >&2
     '';
   })

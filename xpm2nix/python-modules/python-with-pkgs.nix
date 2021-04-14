@@ -1,8 +1,7 @@
 {poetry2nix, R, lib, pythonOlder}:
 
 with builtins;
-poetry2nix.mkPoetryEnv {
-  projectDir = ./.;
+let
   overrides = poetry2nix.overrides.withDefaults (self: super: {
 
     aquirdturtle-collapsible-headings = super.aquirdturtle-collapsible-headings.overridePythonAttrs(oldAttrs: {
@@ -198,4 +197,14 @@ poetry2nix.mkPoetryEnv {
 #    });
 
   });
-}
+in
+  {
+    poetryEnv = poetry2nix.mkPoetryEnv {
+      projectDir = ./.;
+      overrides = overrides;
+    };
+    poetryPackages = poetry2nix.mkPoetryPackages {
+      projectDir = ./.;
+      overrides = overrides;
+    };
+  }

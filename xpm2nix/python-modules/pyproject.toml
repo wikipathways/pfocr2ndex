@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "pathway-figure-ocr-python"
+name = "pfocr2ndex-python"
 version = "0.1.0"
 description = ""
 authors = ["Anders Riutta <git@andersriutta.com>"]

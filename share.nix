@@ -1,7 +1,9 @@
 { stdenv
 , lib
+, symlinkJoin
 , notebookDir
 , python3
+, jupyterExtraPythonResult
 , callPackage
 , jq
 , nodejs
@@ -21,6 +23,37 @@ let
     inherit jupyterlab;
     inherit nodejs;
     inherit setuptools;
+  };
+
+  #pypiShareJupyterPaths = lib.strings.concatStrings (lib.attrsets.mapAttrsToList (name: value: "${value}/share") jupyterExtraPythonResult);
+  #pypiShareJupyterPaths = lib.strings.concatStrings (lib.lists.map (x: "${x}/share") jupyterExtraPythonResult.poetryPackages.poetryPackages);
+  # lib.attrsets.mapAttrsToList (name: value: "${name}") jupyterExtraPythonResult.poetryPackages.pyProject.tool.poetry.dependencies
+  # lib.lists.map (x: x.name) jupyterExtraPythonResult.poetryPackages.poetryLock.package
+  #
+  # these should all be jupyterlab extensions of one sort or another:
+  # lib.lists.map (x: x.name) (lib.lists.filter (x: x ? dependencies.jupyterlab) jupyterExtraPythonResult.poetryPackages.poetryLock.package)
+  #
+  # lib.attrsets.getAttr("anyio") jupyterExtraPythonResult.poetryEnv.pkgs
+  #
+  #pypiShareJupyterPaths = lib.strings.concatStrings (lib.lists.map (x: lib.attrsets.getAttr(x.name) jupyterExtraPythonResult.poetryEnv.pkgs ) (lib.lists.filter (x: x ? dependencies.jupyterlab) jupyterExtraPythonResult.poetryPackages.poetryLock.package));
+  #
+  # jupyterExtraPythonResult = pkgs.callPackage ./xpm2nix/python-modules/python-with-pkgs.nix {pythonOlder = pkgs.python3.pythonOlder;}  
+
+  pypiShareJupyter = symlinkJoin {
+    name = "my-pypi-labextensions";
+    paths = lib.lists.map (x: "${x}/share") (
+      lib.lists.map (x: lib.attrsets.getAttr(x.name) jupyterExtraPythonResult.poetryEnv.pkgs) (
+        lib.lists.filter (x: x ? dependencies.jupyterlab) jupyterExtraPythonResult.poetryPackages.poetryLock.package
+      )
+    );
+#     postBuild = ''
+#       pwd >&2
+#       ls -lah >&2
+#       echo "out $out" >&2
+#       ls -lah $out >&2
+#       exit 1
+#       #rm $out/lib/*.so*
+#     '';
   };
 in
 stdenv.mkDerivation rec {
@@ -117,6 +150,8 @@ stdenv.mkDerivation rec {
     # nbextensions
     ##############
 
+    # TODO: Look into the metadata for companion packages:
+    # https://jupyterlab.readthedocs.io/en/stable/user/extensions.html#companion-packages
     # TODO: what are nbextensions/nbserver_extensions vs. server extensions.
     # What should share-src/config/jupyter_notebook_config.json have for
     # NotebookApp.nbserver_extensions? I used to set "jupyter-js-widgets": true,
@@ -159,83 +194,93 @@ stdenv.mkDerivation rec {
     # symlink dirs into share/jupyter
     ##################################
 
-    mkdir -p "$out/labextensions"
+    ln -s "${pypiShareJupyter}/jupyter/labextensions" "$out/labextensions"
 
-    # Note the prebuilt lab extensions are distributed via PyPI as "python"
-    # packages, even though they are really JS, HTML and CSS.
-    #
-    # Symlink targets may generally use snake_case, but not always.
-    #
-    # The lab extension code appears to be in two places in the python packge:
-    # 1) lib/python3.8/site-packages/snake_case_pkg_name/labextension
-    # 2) share/jupyter/labextensions/dash-case-pkg-name
-    # These directories are identical, except share/... has file install.json.
-
-    # TODO: can we just specify a list of prebuilt lab extensions and run each
-    # one through a function in order to create all the required symlinks?
-
-    # jupyterlab_hide_code
-    #
-    # When the symlink target is 'jupyterlab-hide-code' (dash-case), the lab extension
-    # works, but not when the symlink target is 'jupyterlab_hide_code' (snake_case).
-    #
-    # When using target share/..., the command 'jupyter-labextension list'
-    # adds some extra info to the end:
-    #   jupyterlab-hide-code v3.0.1 enabled OK (python, jupyterlab_hide_code)
-    # When using target lib/..., we get just this:
-    #   jupyterlab-hide-code v3.0.1 enabled OK
-    # This difference could be due to the install.json being in share/...
-    #
-    ln -s "${python3.pkgs.jupyterlab-hide-code}/share/jupyter/labextensions/jupyterlab-hide-code" "$out/labextensions/jupyterlab-hide-code"
-
-    # @axlair/jupyterlab_vim
-    mkdir -p "$out/labextensions/@axlair"
-    ln -s "${python3.pkgs.jupyterlab-vim}/lib/${python3.libPrefix}/site-packages/jupyterlab_vim/labextension" "$out/labextensions/@axlair/jupyterlab_vim"
-
-    # jupyterlab-vimrc
-    ln -s "${python3.pkgs.jupyterlab-vimrc}/lib/${python3.libPrefix}/site-packages/jupyterlab-vimrc" "$out/labextensions/jupyterlab-vimrc"
-
-    # @krassowski/jupyterlab-lsp
-    mkdir -p "$out/labextensions/@krassowski"
-    ln -s "${python3.pkgs.jupyterlab-lsp}/share/jupyter/labextensions/@krassowski/jupyterlab-lsp" "$out/labextensions/@krassowski/jupyterlab-lsp"
-
-    # @ryantam626/jupyterlab_code_formatter
-    mkdir -p "$out/labextensions/@ryantam626"
-    #ln -s "${python3.pkgs.jupyterlab-code-formatter}/share/jupyter/labextensions/@ryantam626/jupyterlab_code_formatter" "$out/labextensions/@ryantam626/jupyterlab_code_formatter"
-    ln -s "${python3.pkgs.jupyterlab-code-formatter}/lib/${python3.libPrefix}/site-packages/jupyterlab_code_formatter/labextension" "$out/labextensions/@ryantam626/jupyterlab_code_formatter"
-
-    # jupyterlab-drawio
-    ln -s "${python3.pkgs.jupyterlab-drawio}/lib/${python3.libPrefix}/site-packages/jupyterlab-drawio/labextension" "$out/labextensions/jupyterlab-drawio"
-
-    # @aquirdturtle/collapsible_headings
-    mkdir -p "$out/labextensions/@aquirdturtle"
-    ln -s "${python3.pkgs.aquirdturtle-collapsible-headings}/share/jupyter/labextensions/@aquirdturtle/collapsible_headings" "$out/labextensions/@aquirdturtle/collapsible_headings"
-
-    # jupyterlab-system-monitor depends on jupyterlab-topbar and jupyter-resource-usage
-
-    # jupyterlab-topbar
-    ln -s "${python3.pkgs.jupyterlab-topbar}/lib/${python3.libPrefix}/site-packages/jupyterlab-topbar/labextension" "$out/labextensions/jupyterlab-topbar-extension"
-
-    # jupyter-resource-usage
-    mkdir -p "$out/labextensions/@jupyter-server"
-    ln -s "${python3.pkgs.jupyter-resource-usage}/share/jupyter/labextensions/@jupyter-server/resource-usage" "$out/labextensions/@jupyter-server/resource-usage"
-
-    # jupyterlab-system-monitor
-    ln -s "${python3.pkgs.jupyterlab-system-monitor}/lib/${python3.libPrefix}/site-packages/jupyterlab-system-monitor/labextension" "$out/labextensions/jupyterlab-system-monitor"
-
-    # jupytext (note we install nb, lab and server extension components)
-    ln -s "${python3.pkgs.jupytext}/lib/${python3.libPrefix}/site-packages/jupytext/labextension" "$out/labextensions/jupyterlab-jupytext"
-
-    #---------------------------------
-    # Prebuilt lab extensions from NPM
-    #---------------------------------
-
-    # Take a source lab extension from NPM and prebuild it for Nix.
-    # It's probably better to just always use the prebuilt lab extensions
-    # PyPi, but this is a demo to show it's possible to do NPM -> Nix.
-    for d in $(ls -1 "${npmLabextensions}/labextensions"); do
-      ln -s "${npmLabextensions}/labextensions/$d" "$out/labextensions/$d"
-    done
+#    mkdir -p "$out/labextensions"
+#
+#    # Note the prebuilt lab extensions are distributed via PyPI as "python"
+#    # packages, even though they are really JS, HTML and CSS.
+#    #
+#    # Symlink targets may generally use snake_case, but not always.
+#    #
+#    # The lab extension code appears to be in two places in the python packge:
+#    # * lib/python3.8/site-packages/snake_case_pkg_name/labextension
+#    # * share/jupyter/labextensions/dash-case-pkg-name
+#    #
+#    # These directories are identical, except the one in share/ has install.json.
+#    # The documentation says to use the share/ directory:
+#    # https://jupyterlab.readthedocs.io/en/stable/extension/extension_dev.html#distributing-a-prebuilt-extension
+#
+#    # TODO: can we just specify a list of prebuilt lab extensions and run each
+#    # one through a function in order to create all the required symlinks?
+#
+#    # jupyterlab_hide_code
+#    #
+#    # When the symlink target is 'jupyterlab-hide-code' (dash-case), the lab extension
+#    # works, but not when the symlink target is 'jupyterlab_hide_code' (snake_case).
+#    #
+#    # When using target share/..., the command 'jupyter-labextension list'
+#    # adds some extra info to the end:
+#    #   jupyterlab-hide-code v3.0.1 enabled OK (python, jupyterlab_hide_code)
+#    # When using target lib/..., we get just this:
+#    #   jupyterlab-hide-code v3.0.1 enabled OK
+#    # This difference could be due to the install.json being in share/...
+#    #
+#    ln -s "${python3.pkgs.jupyterlab-hide-code}/share/jupyter/labextensions/jupyterlab-hide-code" "$out/labextensions/jupyterlab-hide-code"
+#
+#    # @axlair/jupyterlab_vim
+#    mkdir -p "$out/labextensions/@axlair"
+#    ln -s "${python3.pkgs.jupyterlab-vim}/share/jupyter/labextensions/@axlair/jupyterlab-vim" "$out/labextensions/@axlair/jupyterlab_vim"
+#
+#    # Keeping the following for reference as alternative ways of doing this:
+#    #ln -s "${python3.pkgs.jupyterlab-vim}/lib/${python3.libPrefix}/site-packages/jupyterlab_vim/labextension" "$out/labextensions/@axlair/jupyterlab_vim"
+#    # haven't tried this one out, but it might be better than the option above:
+#    #ln -s "${python3.pkgs.jupyterlab-vim}/${python3.sitePackages}/jupyterlab_vim/labextension" "$out/labextensions/@axlair/jupyterlab_vim"
+#
+#    # jupyterlab-vimrc
+#    ln -s "${python3.pkgs.jupyterlab-vimrc}/lib/${python3.libPrefix}/site-packages/jupyterlab-vimrc" "$out/labextensions/jupyterlab-vimrc"
+#
+#    # @krassowski/jupyterlab-lsp
+#    mkdir -p "$out/labextensions/@krassowski"
+#    ln -s "${python3.pkgs.jupyterlab-lsp}/share/jupyter/labextensions/@krassowski/jupyterlab-lsp" "$out/labextensions/@krassowski/jupyterlab-lsp"
+#
+#    # @ryantam626/jupyterlab_code_formatter
+#    mkdir -p "$out/labextensions/@ryantam626"
+#    #ln -s "${python3.pkgs.jupyterlab-code-formatter}/share/jupyter/labextensions/@ryantam626/jupyterlab_code_formatter" "$out/labextensions/@ryantam626/jupyterlab_code_formatter"
+#    ln -s "${python3.pkgs.jupyterlab-code-formatter}/lib/${python3.libPrefix}/site-packages/jupyterlab_code_formatter/labextension" "$out/labextensions/@ryantam626/jupyterlab_code_formatter"
+#
+#    # jupyterlab-drawio
+#    ln -s "${python3.pkgs.jupyterlab-drawio}/lib/${python3.libPrefix}/site-packages/jupyterlab-drawio/labextension" "$out/labextensions/jupyterlab-drawio"
+#
+#    # @aquirdturtle/collapsible_headings
+#    mkdir -p "$out/labextensions/@aquirdturtle"
+#    ln -s "${python3.pkgs.aquirdturtle-collapsible-headings}/share/jupyter/labextensions/@aquirdturtle/collapsible_headings" "$out/labextensions/@aquirdturtle/collapsible_headings"
+#
+#    # jupyterlab-system-monitor depends on jupyterlab-topbar and jupyter-resource-usage
+#
+#    # jupyterlab-topbar
+#    ln -s "${python3.pkgs.jupyterlab-topbar}/lib/${python3.libPrefix}/site-packages/jupyterlab-topbar/labextension" "$out/labextensions/jupyterlab-topbar-extension"
+#
+#    # jupyter-resource-usage
+#    mkdir -p "$out/labextensions/@jupyter-server"
+#    ln -s "${python3.pkgs.jupyter-resource-usage}/share/jupyter/labextensions/@jupyter-server/resource-usage" "$out/labextensions/@jupyter-server/resource-usage"
+#
+#    # jupyterlab-system-monitor
+#    ln -s "${python3.pkgs.jupyterlab-system-monitor}/lib/${python3.libPrefix}/site-packages/jupyterlab-system-monitor/labextension" "$out/labextensions/jupyterlab-system-monitor"
+#
+#    # jupytext (note we install nb, lab and server extension components)
+#    ln -s "${python3.pkgs.jupytext}/lib/${python3.libPrefix}/site-packages/jupytext/labextension" "$out/labextensions/jupyterlab-jupytext"
+#
+#    #---------------------------------
+#    # Prebuilt lab extensions from NPM
+#    #---------------------------------
+#
+#    # Take a source lab extension from NPM and prebuild it for Nix.
+#    # It's probably better to just always use the prebuilt lab extensions
+#    # PyPi, but this is a demo to show it's possible to do NPM -> Nix.
+#    for d in $(ls -1 "${npmLabextensions}/labextensions"); do
+#      ln -s "${npmLabextensions}/labextensions/$d" "$out/labextensions/$d"
+#    done
     
     ###################
     # JupyterLab itself
