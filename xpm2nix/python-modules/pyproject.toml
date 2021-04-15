@@ -52,6 +52,7 @@ Wand = "^0.6.6"
 Pillow = "^8.2.0"
 pyarrow = "^3.0.0"
 ftfy = "^6.0"
+google-api-core = "^1.26.3"
 skosmos-client = "^0.3.0"
 #wikidata2df = "^0.1.0"
 

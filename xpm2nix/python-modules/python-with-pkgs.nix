@@ -1,4 +1,4 @@
-{poetry2nix, R, lib, pythonOlder}:
+{pkgs, poetry2nix, R, lib, pythonOlder}:
 
 with builtins;
 let
@@ -45,6 +45,28 @@ let
         super.jupyter-packaging
       ];
     });
+
+    nbconvert = super.nbconvert.overridePythonAttrs(oldAttrs: {
+      propagatedBuildInputs = (oldAttrs.propagatedBuildInputs or []) ++ [ pkgs.pandoc pkgs.texlive.combined.scheme-full ];
+    });
+
+    # nbconvert dependencies:
+    #p.pandoc
+    # see https://github.com/jupyter/nbconvert/issues/808
+    # TODO: is tectonic needed? It appears I can convert to pdf & latex w/out it.
+    #p.tectonic
+    # more info: https://nixos.wiki/wiki/TexLive
+    #p.texlive.combined.scheme-full
+
+    # still getting some errors for certain types of conversions:
+    # nbconvert failed: Pyppeteer is not installed to support Web PDF conversion. Please install `nbconvert[webpdf]` to enable.
+    # - and -
+    # nbconvert failed: PDF creating failed, captured latex output:
+    # Failed to run "['xelatex', 'notebook.tex', '-quiet']" command:
+    # ...
+    # (/nix/store/llmvlb5wpjrmp4ckxw4g21qn4syyhjpv-texlive-combined-full-2020.2021010
+    # 9/share/texmf/tex/latex/base/size11.cloFontconfig warning: "/etc/fonts/fonts.conf", line 86: unknown element "blank"
+    # ))
 
     jupyterlab-system-monitor = super.jupyterlab-system-monitor.overridePythonAttrs(oldAttrs: {
       nativeBuildInputs = oldAttrs.nativeBuildInputs ++ [

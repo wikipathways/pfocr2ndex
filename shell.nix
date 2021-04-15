@@ -1,5 +1,4 @@
 with builtins;
-#2
 
 # TODO: clean up how to specify extensions
 #
@@ -113,6 +112,7 @@ let
   #########################
 
   jupyterExtraPythonResult = pkgs.callPackage ./xpm2nix/python-modules/python-with-pkgs.nix {
+    inherit pkgs;
     pythonOlder = pkgs.python3.pythonOlder;
   };
   pythonEnv = jupyterExtraPythonResult.poetryEnv;
@@ -231,7 +231,7 @@ let
       # Google
       ########
 
-      #google_api_core
+      google-api-core
       #google_cloud_core
       #google-cloud-sdk
       #google_cloud_testutils
@@ -292,7 +292,7 @@ let
         # For Jupyter
         ####################
 
-        # TODO: is there a way to add all these either automatically or else
+        # TODO: is there a way to either add these all automatically, or else
         # specify them somehow in ./xpm2nix/python-modules/?
 
         # Note: pythonEnv has packages for augmenting Jupyter as well
@@ -313,35 +313,27 @@ let
         #pythonEnv.pkgs.jupyter-lsp
         #pythonEnv.pkgs.jupyterlab-lsp
 
+        # jupytext: ipynb <-> other notebook-ish formats
+        #     like py:sphinx, py:hydrogen, py:light and Rmd
+        # tests:
+        # jupytext notebooks/testthis.ipynb --to py
+
         #pythonEnv.pkgs.jupytext
 
-        # needed by nbconvert
-        p.pandoc
-        # see https://github.com/jupyter/nbconvert/issues/808
-        #tectonic
-        # more info: https://nixos.wiki/wiki/TexLive
-        p.texlive.combined.scheme-full
-        #pythonEnv.pkgs.nbconvert
+        # jupyter-nbconvert : ipynb -> read-only formats like pdf, html, etc.
+        # tests:
+        # jupyter-nbconvert notebooks/testthis.ipynb --to html
+        # jupyter-nbconvert notebooks/testthis.ipynb --to pdf
+        # jupyter-nbconvert notebooks/testthis.ipynb --to latex
 
-        # still getting some errors for certain types of conversions:
-        # nbconvert failed: Pyppeteer is not installed to support Web PDF conversion. Please install `nbconvert[webpdf]` to enable.
-        # - and -
-        # nbconvert failed: PDF creating failed, captured latex output:
-        # Failed to run "['xelatex', 'notebook.tex', '-quiet']" command:
-        # ...
-        # (/nix/store/llmvlb5wpjrmp4ckxw4g21qn4syyhjpv-texlive-combined-full-2020.2021010
-        # 9/share/texmf/tex/latex/base/size11.cloFontconfig warning: "/etc/fonts/fonts.conf", line 86: unknown element "blank"
-        # ))
+        # TODO: is this the best way to specify the R deps below?
 
         p.R
-        
-        # TODO: where am I using rsync?
-        p.rsync
       ] ++ (with pkgs.rPackages; [
         ################################################
         # For server extensions that rely on R or R pkgs
         ################################################
-        # TODO: is it possible to specify these via extraJupyterPath instead?
+        # TODO: is it possible to specify these via extraJupyterPath or extraInputsFrom?
         #       I haven't managed to do it, but it should be possible.
         #       I tried adding the following to extraJupyterPath, but that
         #       didn't seem to do it.
@@ -361,12 +353,43 @@ let
         #prettycode # seems to be needed by styler
       ]);
 
-      # Bring all inputs from a package in scope:
-      #extraInputsFrom = p: [ ];
+      # Bring all inputs from a package in scope.
+      # This is required to make deps available when needed, e.g.,
+      # to make pandoc available to nbconvert.
+      # TODO: which of the following should I use?
+      #extraInputsFrom = p: [ pythonEnv.pkgs.nbconvert ];
+      #extraInputsFrom = p: [ p.pythonPackages.nbconvert ];
+
+      # TODO: extraInputsFrom as specified above gives an error when using direnv:
+      #
+      # ./.envrc:109: Sourcing: command not found
+      #
+      # This is presumably because the dump.env file
+      # ./.direnv/wd-86452ccdf0879f88e537141a4809226d/dump.env
+      # is modified when extraInputsFrom has a python package,
+      # with the following lines being added:
+      #
+      # Sourcing python-remove-tests-dir-hook
+      # Sourcing python-catch-conflicts-hook.sh
+      # Sourcing python-remove-bin-bytecode-hook.sh
+      # Sourcing setuptools-build-hook
+      # Using setuptoolsBuildPhase
+      # Sourcing pip-install-hook
+      # Using pipInstallPhase
+      # Sourcing python-imports-check-hook.sh
+      # Using pythonImportsCheckPhase
+      # Sourcing python-namespaces-hook
+
+      # so for now, I'll just manually specify these deps for nbconvert:
+      extraInputsFrom = p: [ p.pkgs.pandoc p.pkgs.texlive.combined.scheme-full ];
+
+      # I also tried these, but they didn't work:
+      #extraInputsFrom = p: p.pythonPackages.nbconvert.propagatedBuildInputs;
+      #extraInputsFrom = p: pythonEnv.pkgs.nbconvert.propagatedBuildInputs;
 
       # Make paths available to Jupyter itself, generally for server extensions
-      # TODO: is what I have here OK, including everything in pythonEnv, or
-      # should I specify just server extensions?
+      # TODO: is what I have here OK (w/ everything included in pythonEnv), or
+      # should I just specify server extensions?
       extraJupyterPath = pkgs:
         concatStringsSep ":" [
           "${pythonEnv}/${python3.sitePackages}"
@@ -492,6 +515,8 @@ in
   # https://jupyter-notebook.readthedocs.io/en/stable/config.html
   # https://jupyter-server.readthedocs.io/en/latest/search.html?q=jupyter_server_config.json
   # https://jupyterlab.readthedocs.io/en/stable/user/directories.html
+
+  # TODO: ./.envrc:109: Sourcing: command not found
 
   # TODO: @krassowski/jupyterlab-lsp:signature settings schema could not be found and was not loaded
 
