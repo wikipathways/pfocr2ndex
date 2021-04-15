@@ -1,26 +1,29 @@
 with builtins;
-#14
+#2
+
+# TODO: clean up how to specify extensions
+#
+# Types of extensions:
+# --------------------
+# Jupyter lab extensions
+# Jupyter server extensions
+# notebook extensions
+# bundler extensions (not sure what this is)
+# --------------------
+# Python magics (not really extensions)
+# --------------------
+# CLI dependencies for any of the above
+
+# I also want to be able to run my python both from a notebook
+# and also from the command line.
 
 let
-  # TODO: rename these directory variables to match what Jupyter uses.
-  # https://jupyter.readthedocs.io/en/latest/use/jupyter-directories.html
-  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
-  # https://jupyter-notebook.readthedocs.io/en/stable/config.html
-  # https://jupyter-server.readthedocs.io/en/latest/search.html?q=jupyter_server_config.json
-  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html
-
-  # set notebook root_dir in specs/jupyter_server_config.json
-  # ServerApp.root_dir
-
-  # and/or specs/jupyter_notebook_config.json
-  # NotebookApp.notebook_dir
-  # "notebook_dir": "/home/ariutta/Documents/pfocr2ndex/notebooks",
-
   repoDir = toString ./.;
-  # in some cases, notebookDir will be the same as repoDir
+  # If desired, notebookDir can be the same as repoDir
   notebookDir = "${repoDir}/notebooks";
 
   # for local settings, workspaces, etc.
+  # TODO: what should be mutable? when should we use ~/.jupyter?
   mutableJupyterDir = "${repoDir}/.share/jupyter";
 
   # Path to the JupyterWith folder.
@@ -114,6 +117,18 @@ let
   };
   pythonEnv = jupyterExtraPythonResult.poetryEnv;
   topLevelPythonPackages = jupyterExtraPythonResult.topLevelPythonPackages;
+
+  # TODO: can we auto-fill whatever is needed for the following?
+  # iPython.packages
+  # jupyterEnvironment.extraPackages
+  # jupyterEnvironment.extraJupyterPath
+  #
+  # Those all seem to need at least some packages from jupyterExtraPythonResult.
+  # It would be great to auto-fill them like I'm doing for extensions.
+  #
+  # Maybe this one could also use something from jupyterExtraPythonResult?
+  # jupyterEnvironment.extraInputsFrom
+
   python3 = pythonEnv;
 
   jupyter = pkgs.jupyterWith;
@@ -122,42 +137,30 @@ let
   # https://github.com/jupyter-xeus/xeus-python#what-are-the-advantages-of-using-xeus-python-over-ipykernel-ipython-kernel
   # It supports the jupyterlab debugger. But it's not packaged for nixos yet.
 
-  # TODO: I was getting the following error message:
-  # Generating grammar tables from /nix/store/sr8r3k029wvgdbv2zr36wr976dk1lya6-python3-3.8.7-env/lib/python3.8/site-packages/blib2to3/Grammar.txt
-  # Writing grammar tables to /home/ariutta/.cache/black/20.8b1/Grammar3.8.7.final.0.pickle
-  # Writing failed: [Errno 2] No such file or directory: '/home/ariutta/.cache/black/20.8b1/tmppem8fqj6'
-
-  # I made it go away by manually adding the directory, but shouldn't this be automatic?
-  # mkdir -p /home/ariutta/.cache/black/20.8b1/
-
   iPython = jupyter.kernels.iPythonWith {
     name = kernel_descriptor;
+
+    # if we don't specify this, jupyter will use the default of pkgs.python3
+    # rather than the python environment we created with poetry.
+    python3 = pythonEnv;
+
+    # Python libraries to be available to the kernel.
+    # 'p: with p;' tells this to work w/ the packages in whatever is specified
+    # as python3 above. It prefixes each item in the list w/ 'python3.pkgs.'.
     packages = p: with p; [
-      ##############################
-      # Packages to augment Jupyter
-      ##############################
-
-      # TODO: nb_black is a 'python magic', not a server extension. Since it is
-      # intended only for augmenting jupyter, where should I specify it?
-      nb_black
-
-      # TODO: for code formatting, compare nb_black with jupyterlab-code-formatter.
-      # One difference:
-      # nb_black is an IPython Magic (%), whereas
-      # jupyterlab-code-formatter is a combo lab & server extension.
-
-      # similar question for nbconvert: where should we specify it?
-      nbconvert
-      jupytext
-
-      ################################
-      # Non-Jupyter-specific packages
-      ################################
+      # TODO: which packages exactly are supposed to be in here?
+      # It appears extensions like jupyter-code-formatter, jupytext and nbconvert
+      # are all working without being specified here.
+      # Is this supposed to be for non-Jupyter/JupyterLab packages?
+      # Could I just add to this section every package in pyproject.toml that
+      # doesn't depend on jupyter or jupyterlab?
 
       lxml
-      seaborn
-      skosmos_client
-      wikidata2df
+
+      skosmos-client
+
+      # the following isn't automatically working w/ poetry2nix (maybe disable tests?)
+      #wikidata2df
 
       ############
       # requests+
@@ -171,6 +174,12 @@ let
       numpy
       pandas
       pyarrow # needed for pd.read_feather()
+
+      scipy
+
+      # the following two aren't automatically working w/ poetry2nix
+      #seaborn
+      #matplotlib
 
       ########
       # rpy2
@@ -193,13 +202,15 @@ let
 
       # for characters that look like each other
       confusable-homoglyphs
-      homoglyphs
+      # the following isn't automatically working w/ poetry2nix
+      #homoglyphs
 
       # fix encodings
       ftfy
 
       pyahocorasick
-      spacy
+      # the following isn't automatically working w/ poetry2nix (Cython issue)
+      #spacy
       unidecode
 
       ########
@@ -207,10 +218,12 @@ let
       ########
 
       # Python interface to the libmagic file type identification library
-      # I don't think this has anything to do w/ Jupyter magics
+      # This has nothing to do w/ Jupyter magics or ImageMagick.
       python_magic
+
       # python bindings for imagemagick
       Wand
+
       # Python Imaging Library
       pillow
 
@@ -227,6 +240,10 @@ let
     ];
   };
 
+  ######################
+  # Extensions & configs
+  ######################
+
   npmLabextensions = pkgs.callPackage ./xpm2nix/node-packages/labextensions.nix {
     jq=pkgs.jq;
     jupyter=pythonEnv.pkgs.jupyter;
@@ -242,7 +259,7 @@ let
       (pkgs.lib.lists.map (x: pkgs.lib.attrsets.getAttr(x.name) pythonEnv.pkgs) (
         pkgs.lib.lists.filter (x: x ? dependencies.jupyterlab) topLevelPythonPackages
       )) ++ (
-        with pythonEnv.pkgs; [jupyterlab jupytext widgetsnbextension jupyter-resource-usage nbconvert]
+        with pythonEnv.pkgs; [jupyterlab jupyterlab-code-formatter jupytext widgetsnbextension jupyter-resource-usage nbconvert]
       ))
     ) ++ [npmLabextensions shareSrc];
     postBuild = ''
@@ -254,25 +271,49 @@ let
     '';
   };
 
+  ####################
+  # jupyterEnvironment
+  ####################
+
   jupyterEnvironment =
     jupyter.jupyterlabWith {
-      # Corresponds to JupyterLab Application Directory
+
+      # JupyterLab Application Directory
+      # <sys-prefix>/share/jupyter/lab
       # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
-      # Directory from which we serve notebooks
-      #
-      # this is what we used to use:
-      #directory = "${mutableJupyterDir}/lab";
-      #
-      # I want to use this:
       directory = "${shareJupyter}/lab";
 
       kernels = [ iPython irkernel ];
 
       # Add extra packages to the JupyterWith environment
+      # TODO: which packages exactly are supposed to be here?
       extraPackages = p: [
         ####################
         # For Jupyter
         ####################
+
+        # TODO: is there a way to add all these either automatically or else
+        # specify them somehow in ./xpm2nix/python-modules/?
+
+        # Note: pythonEnv has packages for augmenting Jupyter as well
+        # as for other purposes.
+        # TODO: should it be specified here?
+        # At present, if I comment out both pythonEnv and
+        # pythonEnv.pkgs.jupyterlab-code-formatter, then
+        # jupyterlab-code-formatter complains it can't find its server extension.
+        # 
+        # But if I enable either of the two lines below, jupyterlab-code-formatter works.
+        pythonEnv
+        #pythonEnv.pkgs.jupyterlab-code-formatter
+
+        # Likewise, if pythonEnv isn't enabled above, I need to explicitly
+        # specify the Python/PyPI extensions below for them to work:
+
+        # jupyterlab-lsp must be specified here in order for the LSP for R to work.
+        #pythonEnv.pkgs.jupyter-lsp
+        #pythonEnv.pkgs.jupyterlab-lsp
+
+        #pythonEnv.pkgs.jupytext
 
         # needed by nbconvert
         p.pandoc
@@ -280,10 +321,9 @@ let
         #tectonic
         # more info: https://nixos.wiki/wiki/TexLive
         p.texlive.combined.scheme-full
-        # not sure the following needs to be specified here:
-        pythonEnv.pkgs.nbconvert
+        #pythonEnv.pkgs.nbconvert
 
-        # still getting some errors:
+        # still getting some errors for certain types of conversions:
         # nbconvert failed: Pyppeteer is not installed to support Web PDF conversion. Please install `nbconvert[webpdf]` to enable.
         # - and -
         # nbconvert failed: PDF creating failed, captured latex output:
@@ -293,30 +333,9 @@ let
         # 9/share/texmf/tex/latex/base/size11.cloFontconfig warning: "/etc/fonts/fonts.conf", line 86: unknown element "blank"
         # ))
 
-        # TODO: these dependencies are only required when we want to build a
-        # lab extension from source.
-        # Does jupyterWith allow me to specify them as buildInputs?
-        p.nodejs
-        p.yarn
-
-        # Note: pythonEnv has packages for augmenting Jupyter as well
-        # as for other purposes.
-        # TODO: should it be specified here?
-        pythonEnv
-
-        # jupyterlab-lsp must be specified here in order for the LSP for R to work.
-        # TODO: why isn't it enough that this is specified for pythonEnv?
-        pythonEnv.pkgs.jupyter-lsp
-        pythonEnv.pkgs.jupyterlab-lsp
-
-        # TODO: @krassowski/jupyterlab-lsp:signature settings schema could not be found and was not loaded
-
-        #pythonEnv.pkgs.jupyterlab-code-formatter
-
-        pythonEnv.pkgs.jupytext
-
         p.R
         
+        # TODO: where am I using rsync?
         p.rsync
       ] ++ (with pkgs.rPackages; [
         ################################################
@@ -346,6 +365,8 @@ let
       #extraInputsFrom = p: [ ];
 
       # Make paths available to Jupyter itself, generally for server extensions
+      # TODO: is what I have here OK, including everything in pythonEnv, or
+      # should I specify just server extensions?
       extraJupyterPath = pkgs:
         concatStringsSep ":" [
           "${pythonEnv}/${python3.sitePackages}"
@@ -429,40 +450,6 @@ in
       export JUPYTER_RUNTIME_DIR="${mutableJupyterDir}/runtime"
       mkdir -p "$JUPYTER_RUNTIME_DIR"
 
-      # If JUPYTER_DATA_DIR is made immutable, I get the following error:
-      # Unexpected error while saving file: Untitled.ipynb HTTP 500: Internal Server Error
-      # (Unexpected error while saving file: Untitled.ipynb [Errno 30] Read-only file system: '/nix/store/rjcbrkd1br3d4kckw1m1ppn9ksv6sm0c-my-share-jupyter-0.0.0/notebook_secret')
-
-      # I also got an error when I created an R ipynb file and tried saving it:
-      #
-      # File Save Error for Untitled1.ipynb
-      # Unexpected error while saving file: Untitled1.ipynb HTTP 500: Internal Server Error (Unexpected error while saving file: Untitled1.ipynb attempt to write a readonly database)
-      #
-      # Possibly because this file changes when we create a new notebook:
-      # .share/jupyter/nbsignatures.db
-
-      # To identify which files must be mutable, make all dirs mutable and then:
-      #
-      # newer .share
-      # find .share/ -newermt '2021-04-12 19:00'
-      #
-      # or
-      #
-      # find .share/ -newer .share/jupyter/nbextensions/jupytext/jupytext_menu.png
-
-      # .share/jupyter/nbconvert/templates
-      # .share/jupyter/notebook_secret
-      # .share/jupyter/nbsignatures.db
-      # .share/jupyter/runtime/jupyter_cookie_secret
-      # .share/jupyter/runtime/jpserver-26238.json
-      #
-      # R or Python kernel launched:
-      # .share/jupyter/runtime/kernel-87d047eb-f646-473a-9f17-fac7fcfe7d75.json
-      #
-      # .share/jupyter/runtime/jpserver-26238-open.html
-      # .share/jupyter/config/lab/user-settings/@jupyterlab/application-extension/sidebar.jupyterlab-settings
-      # .share/jupyter/config/lab/workspaces/default-37a8.jupyterlab-workspace
-
       #------------
       # other stuff
       #------------
@@ -498,3 +485,68 @@ in
       fi
     '';
   })
+
+  # TODO: rename directory variables to match what Jupyter uses.
+  # https://jupyter.readthedocs.io/en/latest/use/jupyter-directories.html
+  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html#jupyterlab-application-directory
+  # https://jupyter-notebook.readthedocs.io/en/stable/config.html
+  # https://jupyter-server.readthedocs.io/en/latest/search.html?q=jupyter_server_config.json
+  # https://jupyterlab.readthedocs.io/en/stable/user/directories.html
+
+  # TODO: @krassowski/jupyterlab-lsp:signature settings schema could not be found and was not loaded
+
+  # NOTE: If JUPYTER_DATA_DIR is made immutable, I get the following error:
+  # Unexpected error while saving file: Untitled.ipynb HTTP 500: Internal Server Error
+  # (Unexpected error while saving file: Untitled.ipynb [Errno 30] Read-only file system: '/nix/store/rjcbrkd1br3d4kckw1m1ppn9ksv6sm0c-my-share-jupyter-0.0.0/notebook_secret')
+
+  # I also got an error when I created an R ipynb file and tried saving it:
+  #
+  # File Save Error for Untitled1.ipynb
+  # Unexpected error while saving file: Untitled1.ipynb HTTP 500: Internal Server Error (Unexpected error while saving file: Untitled1.ipynb attempt to write a readonly database)
+  #
+  # Possibly because this file changes when we create a new notebook:
+  # .share/jupyter/nbsignatures.db
+
+  # To identify which files must be mutable, make all dirs mutable and then:
+  #
+  # newer .share
+  # find .share/ -newermt '2021-04-12 19:00'
+  #
+  # or
+  #
+  # find .share/ -newer .share/jupyter/nbextensions/jupytext/jupytext_menu.png
+
+  # .share/jupyter/nbconvert/templates
+  # .share/jupyter/notebook_secret
+  # .share/jupyter/nbsignatures.db
+  # .share/jupyter/runtime/jupyter_cookie_secret
+  # .share/jupyter/runtime/jpserver-26238.json
+  #
+  # R or Python kernel launched:
+  # .share/jupyter/runtime/kernel-87d047eb-f646-473a-9f17-fac7fcfe7d75.json
+  #
+  # .share/jupyter/runtime/jpserver-26238-open.html
+  # .share/jupyter/config/lab/user-settings/@jupyterlab/application-extension/sidebar.jupyterlab-settings
+  # .share/jupyter/config/lab/workspaces/default-37a8.jupyterlab-workspace
+
+  # TODO: I was getting the following error message:
+  # Generating grammar tables from /nix/store/sr8r3k029wvgdbv2zr36wr976dk1lya6-python3-3.8.7-env/lib/python3.8/site-packages/blib2to3/Grammar.txt
+  # Writing grammar tables to /home/ariutta/.cache/black/20.8b1/Grammar3.8.7.final.0.pickle
+  # Writing failed: [Errno 2] No such file or directory: '/home/ariutta/.cache/black/20.8b1/tmppem8fqj6'
+
+  # I made it go away by manually adding the directory, but shouldn't this be automatic?
+  # mkdir -p /home/ariutta/.cache/black/20.8b1/
+
+  # nix-store -q --roots /nix/store/93hc8xfc1krv8ab2wi1z246q415iaaw5-python3.8-rpy2-3.4.1    
+  # nix-store -q --referrers /nix/store/93hc8xfc1krv8ab2wi1z246q415iaaw5-python3.8-rpy2-3.4.1    
+  # for x in $(ls -1 /nix/store | grep rpy2); do echo ""; echo "/nix/store/$x"; sudo nix-store -q --roots /nix/store/"$x"; done
+
+  # TODO: for code formatting, compare nb_black with jupyterlab-code-formatter.
+  # One difference:
+  # nb_black is an IPython Magic (%), whereas
+  # jupyterlab-code-formatter is a combo lab & server extension.
+  # https://github.com/ryantam626/jupyterlab_code_formatter
+  #
+  # For JupyterLab, call nb_black w/ %load_ext lab_black
+  # https://pypi.org/project/nb-black/
+  # https://github.com/dnanhkhoa/nb_black

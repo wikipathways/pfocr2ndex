@@ -119,16 +119,16 @@ let
       #   if python 3 but < 3.4, use enum34
       # But the way it's specified doesn't work for python >= 3.4.
       # I'm just telling it to use enum34 whenever python < 3.4
-      prePatch = (oldAttrs.prePatch or "") + ''
-        substituteInPlace setup.py \
-            --replace 'enum34' 'enum34; python_version < "3.4"'
-      '';
+#      prePatch = (oldAttrs.prePatch or "") + ''
+#        substituteInPlace setup.py \
+#            --replace 'enum34' 'enum34; python_version < "3.4"'
+#      '';
 
 #      propagatedBuildInputs = [
 #        six ijson requests requests-toolbelt networkx urllib3 pandas pysolr numpy
 #      ] ++ lib.optionals (pythonOlder "3.4") [ enum34 ];
 
-      propagatedBuildInputs = oldAttrs.propagatedBuildInputs ++ lib.optionals (pythonOlder "3.4") [ enum34 ];
+      #propagatedBuildInputs = oldAttrs.propagatedBuildInputs ++ lib.optionals (pythonOlder "3.4") [ enum34 ];
 
 #      checkInputs = [
 #        nose six ijson requests requests-toolbelt networkx urllib3 pandas pysolr numpy
